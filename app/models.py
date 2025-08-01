@@ -1,0 +1,53 @@
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime
+import os
+
+# 데이터베이스 설정
+DATABASE_URL = "sqlite:///./teams.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class Team(Base):
+    __tablename__ = "teams"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    # 팀 멤버 관계
+    members = relationship("TeamMember", back_populates="team")
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    user_id = Column(String, index=True)  # Slack user ID
+    user_name = Column(String)  # Slack user name
+    position = Column(String)  # BE, FE, Designer, Planner
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 팀 관계
+    team = relationship("Team", back_populates="members")
+
+# 데이터베이스 테이블 생성
+Base.metadata.create_all(bind=engine)
+
+# 팀 구성 규칙
+TEAM_COMPOSITION = {
+    "BE": 2,  # BE 개발자 2명
+    "FE": 1,  # FE 개발자 1명
+    "Designer": 1,  # 디자이너 1명
+    "Planner": 1  # 기획자 1명
+}
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close() 
