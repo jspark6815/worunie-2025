@@ -74,6 +74,8 @@ async def handle_slash_commands(
         return handle_team_info(text, team_service)
     elif command == '/팀목록':
         return handle_team_list(team_service)
+    elif command == '/명령어':
+        return handle_help_command()
     else:
         logger.warning(f"Unknown command: {command}")
         return {
@@ -219,3 +221,47 @@ def handle_team_list(team_service: TeamBuildingService):
             "response_type": "ephemeral",
             "text": f"❌ {result['message']}"
         } 
+
+def handle_help_command():
+    """명령어 도움말 처리"""
+    help_text = "🤖 **워런톤 슬랙 봇 명령어 가이드**\n\n"
+    
+    help_text += "📋 **팀 관리 명령어**\n"
+    help_text += "• `/팀생성 팀명` - 새로운 팀을 생성합니다\n"
+    help_text += "  예시: `/팀생성 해커톤팀1`\n\n"
+    
+    help_text += "• `/팀빌딩 포지션 @유저명` - 팀에 멤버를 추가합니다\n"
+    help_text += "  예시: `/팀빌딩 BE @john`\n"
+    help_text += "  가능한 포지션:\n"
+    for position, count in TEAM_COMPOSITION.items():
+        help_text += f"    - {position}: {count}명\n"
+    help_text += "\n"
+    
+    help_text += "• `/팀정보 팀명` - 팀의 상세 정보를 조회합니다\n"
+    help_text += "  예시: `/팀정보 해커톤팀1`\n\n"
+    
+    help_text += "• `/팀목록` - 모든 팀 목록을 조회합니다\n\n"
+    
+    help_text += "📊 **팀 구성 규칙**\n"
+    help_text += "• BE 개발자: 2명\n"
+    help_text += "• FE 개발자: 1명\n"
+    help_text += "• 디자이너: 1명\n"
+    help_text += "• 기획자: 1명\n"
+    help_text += "• **총 5명**으로 구성\n\n"
+    
+    help_text += "💡 **사용 팁**\n"
+    help_text += "• 팀명은 중복될 수 없습니다\n"
+    help_text += "• 한 명은 하나의 팀에만 속할 수 있습니다\n"
+    help_text += "• 포지션별로 정해진 인원만 추가할 수 있습니다\n"
+    help_text += "• 팀이 완성되면 ✅ 표시가 나타납니다\n\n"
+    
+    help_text += "🔧 **문제 해결**\n"
+    help_text += "• 명령어가 작동하지 않으면 봇을 채널에 초대해주세요\n"
+    help_text += "• 권한 문제가 있다면 관리자에게 문의하세요\n\n"
+    
+    help_text += "즐거운 해커톤 되세요! 🚀"
+    
+    return {
+        "response_type": "ephemeral",
+        "text": help_text
+    } 
