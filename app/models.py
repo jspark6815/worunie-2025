@@ -17,6 +17,8 @@ class Team(Base):
     name = Column(String, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    creator_id = Column(String, index=True)  # 팀장의 Slack user ID
+    creator_name = Column(String)  # 팀장의 이름
     
     # 팀 멤버 관계
     members = relationship("TeamMember", back_populates="team")

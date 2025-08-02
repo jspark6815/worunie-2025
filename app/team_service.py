@@ -17,7 +17,11 @@ class TeamBuildingService:
                 return {"success": False, "message": f"팀명 '{team_name}'이 이미 존재합니다."}
             
             # 새 팀 생성
-            new_team = Team(name=team_name)
+            new_team = Team(
+                name=team_name,
+                creator_id=creator_id,
+                creator_name=creator_name
+            )
             self.db.add(new_team)
             self.db.commit()
             self.db.refresh(new_team)
@@ -29,6 +33,35 @@ class TeamBuildingService:
             self.db.rollback()
             logger.error(f"Error creating team: {e}")
             return {"success": False, "message": "팀 생성 중 오류가 발생했습니다."}
+    
+    def delete_team(self, team_name: str, user_id: str) -> dict:
+        """팀 삭제 (팀장만 가능)"""
+        try:
+            # 팀 찾기
+            team = self.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
+            if not team:
+                return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
+            
+            # 팀장 권한 확인
+            if team.creator_id != user_id:
+                return {"success": False, "message": f"팀을 삭제할 권한이 없습니다. 팀장만 삭제할 수 있습니다."}
+            
+            # 팀 멤버들 삭제
+            members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+            for member in members:
+                self.db.delete(member)
+            
+            # 팀 비활성화 (실제 삭제 대신 is_active = False)
+            team.is_active = False
+            self.db.commit()
+            
+            logger.info(f"Team '{team_name}' deleted by {user_id}")
+            return {"success": True, "message": f"팀 '{team_name}'이 삭제되었습니다."}
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error deleting team: {e}")
+            return {"success": False, "message": "팀 삭제 중 오류가 발생했습니다."}
     
     def add_member_to_team(self, team_name: str, position: str, user_id: str, user_name: str) -> dict:
         """팀에 멤버 추가"""
@@ -74,6 +107,48 @@ class TeamBuildingService:
             logger.error(f"Error adding member to team: {e}")
             return {"success": False, "message": "멤버 추가 중 오류가 발생했습니다."}
     
+    def remove_member_from_team(self, team_name: str, target_user_id: str, user_id: str) -> dict:
+        """팀에서 멤버 삭제 (팀장만 가능)"""
+        try:
+            # 팀 찾기
+            team = self.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
+            if not team:
+                return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
+            
+            # 팀장 권한 확인
+            if team.creator_id != user_id:
+                return {"success": False, "message": f"팀원을 삭제할 권한이 없습니다. 팀장만 삭제할 수 있습니다."}
+            
+            # 삭제할 멤버 찾기
+            member = self.db.query(TeamMember).filter(
+                TeamMember.team_id == team.id,
+                TeamMember.user_id == target_user_id
+            ).first()
+            
+            if not member:
+                return {"success": False, "message": f"<@{target_user_id}>님은 '{team_name}' 팀의 멤버가 아닙니다."}
+            
+            # 팀장 자신을 삭제하려고 하는지 확인
+            if target_user_id == user_id:
+                return {"success": False, "message": "팀장은 자신을 삭제할 수 없습니다. 팀을 삭제하려면 `/팀삭제` 명령어를 사용하세요."}
+            
+            # 팀에 최소 1명은 남아있어야 함 (팀장 제외)
+            total_members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).count()
+            if total_members <= 1:
+                return {"success": False, "message": "팀에 최소 1명의 멤버는 남아있어야 합니다."}
+            
+            # 멤버 삭제
+            self.db.delete(member)
+            self.db.commit()
+            
+            logger.info(f"Member {target_user_id} removed from team {team_name} by {user_id}")
+            return {"success": True, "message": f"<@{target_user_id}>님이 '{team_name}' 팀에서 삭제되었습니다!"}
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error removing member from team: {e}")
+            return {"success": False, "message": "팀원 삭제 중 오류가 발생했습니다."}
+    
     def get_team_info(self, team_name: str) -> dict:
         """팀 정보 조회"""
         try:
@@ -103,7 +178,9 @@ class TeamBuildingService:
                 "team_name": team_name,
                 "members": member_list,
                 "status": team_status,
-                "created_at": team.created_at.strftime("%Y-%m-%d %H:%M")
+                "created_at": team.created_at.strftime("%Y-%m-%d %H:%M"),
+                "creator_name": team.creator_name,
+                "creator_id": team.creator_id
             }
             
         except Exception as e:

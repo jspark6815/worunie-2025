@@ -74,6 +74,10 @@ async def handle_slash_commands(
         return handle_team_info(text, team_service)
     elif command == '/팀목록':
         return handle_team_list(team_service)
+    elif command == '/팀삭제':
+        return handle_delete_team(text, user_id, user_name, team_service)
+    elif command == '/팀원삭제':
+        return handle_remove_member(text, user_id, user_name, team_service)
     elif command == '/명령어':
         return handle_help_command()
     else:
@@ -172,7 +176,8 @@ def handle_team_info(text: str, team_service: TeamBuildingService):
     
     if result["success"]:
         response_text = f"📋 **{result['team_name']}** 팀 정보\n"
-        response_text += f"생성일: {result['created_at']}\n\n"
+        response_text += f"생성일: {result['created_at']}\n"
+        response_text += f"팀장: <@{result['creator_id']}> ({result['creator_name']})\n\n"
         
         response_text += "👥 **팀 구성 현황**\n"
         for position, status in result["status"].items():
@@ -222,6 +227,65 @@ def handle_team_list(team_service: TeamBuildingService):
             "text": f"❌ {result['message']}"
         } 
 
+def handle_delete_team(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
+    """팀 삭제 처리"""
+    if not text:
+        return {
+            "response_type": "ephemeral",
+            "text": "사용법: `/팀삭제 팀명`\n예시: `/팀삭제 해커톤팀1`"
+        }
+    
+    result = team_service.delete_team(text, user_id)
+    
+    if result["success"]:
+        return {
+            "response_type": "in_channel",
+            "text": f"✅ {result['message']}"
+        }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
+
+def handle_remove_member(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
+    """팀원 삭제 처리"""
+    if not text:
+        return {
+            "response_type": "ephemeral",
+            "text": "사용법: `/팀원삭제 팀명 유저명`\n예시: `/팀원삭제 해커톤팀1 @john`"
+        }
+    
+    parts = text.split()
+    if len(parts) != 2:
+        return {
+            "response_type": "ephemeral",
+            "text": "사용법: `/팀원삭제 팀명 유저명`\n예시: `/팀원삭제 해커톤팀1 @john`"
+        }
+    
+    team_name, target_user = parts
+    
+    if not target_user.startswith('@'):
+        return {
+            "response_type": "ephemeral",
+            "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀원삭제 해커톤팀1 @john`"
+        }
+    
+    target_user_id = target_user[1:]
+    
+    result = team_service.remove_member_from_team(team_name, target_user_id, user_id)
+    
+    if result["success"]:
+        return {
+            "response_type": "in_channel",
+            "text": f"✅ {result['message']}"
+        }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
+
 def handle_help_command():
     """명령어 도움말 처리"""
     help_text = "🤖 **워런톤 슬랙 봇 명령어 가이드**\n\n"
@@ -241,6 +305,12 @@ def handle_help_command():
     help_text += "  예시: `/팀정보 해커톤팀1`\n\n"
     
     help_text += "• `/팀목록` - 모든 팀 목록을 조회합니다\n\n"
+    
+    help_text += "• `/팀삭제 팀명` - 팀을 삭제합니다 (팀장만 가능)\n"
+    help_text += "  예시: `/팀삭제 해커톤팀1`\n\n"
+    
+    help_text += "• `/팀원삭제 팀명 @유저명` - 팀에서 멤버를 삭제합니다 (팀장만 가능)\n"
+    help_text += "  예시: `/팀원삭제 해커톤팀1 @john`\n\n"
     
     help_text += "📊 **팀 구성 규칙**\n"
     help_text += "• BE 개발자: 2명\n"
