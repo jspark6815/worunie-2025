@@ -99,7 +99,7 @@ def handle_create_team(text: str, user_id: str, user_name: str, team_service: Te
     
     if result["success"]:
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": f"🎉 {result['message']}\n팀장: <@{user_id}>"
         }
     else:
@@ -155,7 +155,7 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     
     if result["success"]:
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": f"✅ {result['message']}"
         }
     else:
@@ -191,7 +191,7 @@ def handle_team_info(text: str, team_service: TeamBuildingService):
             response_text += "\n**팀 멤버**: 아직 없음"
         
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": response_text
         }
     else:
@@ -207,7 +207,7 @@ def handle_team_list(team_service: TeamBuildingService):
     if result["success"]:
         if not result["teams"]:
             return {
-                "response_type": "in_channel",
+                "response_type": "ephemeral",
                 "text": "📋 **팀 목록**\n아직 생성된 팀이 없습니다.\n`/팀생성 팀명`으로 팀을 만들어보세요!"
             }
         
@@ -218,7 +218,7 @@ def handle_team_list(team_service: TeamBuildingService):
             response_text += f"   생성일: {team['created_at']}\n\n"
         
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": response_text
         }
     else:
@@ -239,7 +239,7 @@ def handle_delete_team(text: str, user_id: str, user_name: str, team_service: Te
     
     if result["success"]:
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": f"✅ {result['message']}"
         }
     else:
@@ -277,7 +277,7 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
     
     if result["success"]:
         return {
-            "response_type": "in_channel",
+            "response_type": "ephemeral",
             "text": f"✅ {result['message']}"
         }
     else:
