@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  slack-bot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+    volumes:
+      - ./teams.db:/app/teams.db
+    restart: unless-stopped 
