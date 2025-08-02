@@ -19,6 +19,37 @@ logger = logging.getLogger(__name__)
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 
+def get_user_info(user_id: str) -> dict:
+    """Slack API를 통해 사용자 정보를 가져옵니다"""
+    if not SLACK_BOT_TOKEN:
+        logger.warning("SLACK_BOT_TOKEN not found, cannot get user info")
+        return {"is_staff": False, "is_admin": False}
+    
+    try:
+        response = requests.get(
+            "https://slack.com/api/users.info",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            params={"user": user_id}
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                user = data.get("user", {})
+                # staff 또는 admin 권한 확인
+                is_staff = user.get("is_admin", False) or user.get("is_owner", False)
+                is_admin = user.get("is_admin", False) or user.get("is_owner", False)
+                
+                logger.info(f"User {user_id} info: is_staff={is_staff}, is_admin={is_admin}")
+                return {"is_staff": is_staff, "is_admin": is_admin}
+        
+        logger.warning(f"Failed to get user info for {user_id}: {response.text}")
+        return {"is_staff": False, "is_admin": False}
+        
+    except Exception as e:
+        logger.error(f"Error getting user info for {user_id}: {e}")
+        return {"is_staff": False, "is_admin": False}
+
 def verify_slack_request(body: bytes, signature: str, timestamp: str):
     """Slack 요청 서명 검증"""
     if not SLACK_SIGNING_SECRET:
@@ -175,20 +206,20 @@ def handle_team_info(text: str, team_service: TeamBuildingService):
     result = team_service.get_team_info(text)
     
     if result["success"]:
-        response_text = f"📋 **{result['team_name']}** 팀 정보\n"
+        response_text = f"📋 *{result['team_name']}* 팀 정보\n"
         response_text += f"생성일: {result['created_at']}\n"
         response_text += f"팀장: <@{result['creator_id']}> ({result['creator_name']})\n\n"
         
-        response_text += "👥 **팀 구성 현황**\n"
+        response_text += "👥 *팀 구성 현황*\n"
         for position, status in result["status"].items():
             emoji = "✅" if status["filled"] else "❌"
             response_text += f"{emoji} {position}: {status['current']}/{status['required']}명\n"
         
         if result["members"]:
-            response_text += "\n**팀 멤버**\n"
+            response_text += "\n*팀 멤버*\n"
             response_text += "\n".join(result["members"])
         else:
-            response_text += "\n**팀 멤버**: 아직 없음"
+            response_text += "\n*팀 멤버*: 아직 없음"
         
         return {
             "response_type": "ephemeral",
@@ -208,13 +239,13 @@ def handle_team_list(team_service: TeamBuildingService):
         if not result["teams"]:
             return {
                 "response_type": "ephemeral",
-                "text": "📋 **팀 목록**\n아직 생성된 팀이 없습니다.\n`/팀생성 팀명`으로 팀을 만들어보세요!"
+                "text": "📋 *팀 목록*\n아직 생성된 팀이 없습니다.\n`/팀생성 팀명`으로 팀을 만들어보세요!"
             }
         
-        response_text = "📋 **팀 목록**\n"
+        response_text = "📋 *팀 목록*\n"
         for team in result["teams"]:
             status_emoji = "✅" if team["is_complete"] else "⏳"
-            response_text += f"{status_emoji} **{team['name']}** ({team['member_count']}/{team['total_required']}명)\n"
+            response_text += f"{status_emoji} *{team['name']}* ({team['member_count']}/{team['total_required']}명)\n"
             response_text += f"   생성일: {team['created_at']}\n\n"
         
         return {
@@ -235,7 +266,11 @@ def handle_delete_team(text: str, user_id: str, user_name: str, team_service: Te
             "text": "사용법: `/팀삭제 팀명`\n예시: `/팀삭제 해커톤팀1`"
         }
     
-    result = team_service.delete_team(text, user_id)
+    # 사용자 권한 확인
+    user_info = get_user_info(user_id)
+    is_staff = user_info.get("is_staff", False)
+    
+    result = team_service.delete_team(text, user_id, is_staff=is_staff)
     
     if result["success"]:
         return {
@@ -273,7 +308,11 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
     
     target_user_id = target_user[1:]
     
-    result = team_service.remove_member_from_team(team_name, target_user_id, user_id)
+    # 사용자 권한 확인
+    user_info = get_user_info(user_id)
+    is_staff = user_info.get("is_staff", False)
+    
+    result = team_service.remove_member_from_team(team_name, target_user_id, user_id, is_staff=is_staff)
     
     if result["success"]:
         return {
@@ -288,9 +327,9 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
 
 def handle_help_command():
     """명령어 도움말 처리"""
-    help_text = "🤖 **워런톤 슬랙 봇 명령어 가이드**\n\n"
+    help_text = "🤖 *워런톤 슬랙 봇 명령어 가이드*\n\n"
     
-    help_text += "📋 **팀 관리 명령어**\n"
+    help_text += "📋 *팀 관리 명령어*\n"
     help_text += "• `/팀생성 팀명` - 새로운 팀을 생성합니다\n"
     help_text += "  예시: `/팀생성 해커톤팀1`\n\n"
     
@@ -306,26 +345,26 @@ def handle_help_command():
     
     help_text += "• `/팀목록` - 모든 팀 목록을 조회합니다\n\n"
     
-    help_text += "• `/팀삭제 팀명` - 팀을 삭제합니다 (팀장만 가능)\n"
+    help_text += "• `/팀삭제 팀명` - 팀을 삭제합니다 (팀장 또는 관리자만 가능)\n"
     help_text += "  예시: `/팀삭제 해커톤팀1`\n\n"
     
-    help_text += "• `/팀원삭제 팀명 @유저명` - 팀에서 멤버를 삭제합니다 (팀장만 가능)\n"
+    help_text += "• `/팀원삭제 팀명 @유저명` - 팀에서 멤버를 삭제합니다 (팀장 또는 관리자만 가능)\n"
     help_text += "  예시: `/팀원삭제 해커톤팀1 @john`\n\n"
     
-    help_text += "📊 **팀 구성 규칙**\n"
+    help_text += "📊 *팀 구성 규칙*\n"
     help_text += "• BE 개발자: 2명\n"
     help_text += "• FE 개발자: 1명\n"
     help_text += "• 디자이너: 1명\n"
     help_text += "• 기획자: 1명\n"
-    help_text += "• **총 5명**으로 구성\n\n"
+    help_text += "• *총 5명*으로 구성\n\n"
     
-    help_text += "💡 **사용 팁**\n"
+    help_text += "💡 *사용 팁*\n"
     help_text += "• 팀명은 중복될 수 없습니다\n"
     help_text += "• 한 명은 하나의 팀에만 속할 수 있습니다\n"
     help_text += "• 포지션별로 정해진 인원만 추가할 수 있습니다\n"
     help_text += "• 팀이 완성되면 ✅ 표시가 나타납니다\n\n"
     
-    help_text += "🔧 **문제 해결**\n"
+    help_text += "🔧 *문제 해결*\n"
     help_text += "• 명령어가 작동하지 않으면 봇을 채널에 초대해주세요\n"
     help_text += "• 권한 문제가 있다면 관리자에게 문의하세요\n\n"
     
