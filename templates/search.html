@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사용자 검색 - DB 조회 도구</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .search-card {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease;
+        }
+        .search-card:hover {
+            transform: translateY(-3px);
+        }
+        .position-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+        }
+        .insurance-badge {
+            font-size: 0.7em;
+            padding: 3px 6px;
+        }
+        .btn-back {
+            border-radius: 25px;
+            padding: 10px 25px;
+        }
+        .search-form {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .form-control {
+            border-radius: 25px;
+            border: none;
+            padding: 12px 20px;
+        }
+        .btn-search {
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="text-white">
+                            <i class="fas fa-search"></i> 사용자 검색
+                        </h1>
+                        <p class="text-white-50">이름으로 사용자를 검색합니다.</p>
+                    </div>
+                    <a href="/" class="btn btn-light btn-back">
+                        <i class="fas fa-arrow-left"></i> 메인으로
+                    </a>
+                </div>
+
+                <!-- 검색 폼 -->
+                <div class="card search-card mb-4">
+                    <div class="card-body">
+                        <form method="GET" action="/search" class="search-form">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <input type="text" name="q" value="{{ query }}" 
+                                           class="form-control" placeholder="검색할 사용자 이름을 입력하세요..."
+                                           autocomplete="off">
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" class="btn btn-primary btn-search w-100">
+                                        <i class="fas fa-search"></i> 검색
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 검색 결과 -->
+                {% if query %}
+                    {% if users %}
+                        <div class="card search-card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-search"></i> "{{ query }}" 검색 결과
+                                    <span class="badge bg-light text-dark ms-2">{{ total_results }}명</span>
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th><i class="fas fa-user"></i> 이름</th>
+                                                <th><i class="fas fa-id-badge"></i> Slack ID</th>
+                                                <th><i class="fas fa-graduation-cap"></i> 학교/전공</th>
+                                                <th><i class="fas fa-briefcase"></i> 포지션</th>
+                                                <th><i class="fas fa-shield-alt"></i> 4대보험</th>
+                                                <th><i class="fas fa-envelope"></i> 이메일</th>
+                                                <th><i class="fas fa-calendar"></i> 등록일</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for user in users %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ user.name }}</strong>
+                                                </td>
+                                                <td>
+                                                    <code>{{ user.user_id }}</code>
+                                                </td>
+                                                <td>
+                                                    {% if user.school_major %}
+                                                        {{ user.school_major }}
+                                                    {% else %}
+                                                        <span class="text-muted">미입력</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if user.position %}
+                                                        {% if user.position == "프론트엔드" %}
+                                                            <span class="badge bg-primary position-badge">{{ user.position }}</span>
+                                                        {% elif user.position == "백엔드" %}
+                                                            <span class="badge bg-success position-badge">{{ user.position }}</span>
+                                                        {% elif user.position == "기획" %}
+                                                            <span class="badge bg-warning position-badge">{{ user.position }}</span>
+                                                        {% elif user.position == "디자인" %}
+                                                            <span class="badge bg-info position-badge">{{ user.position }}</span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary position-badge">{{ user.position }}</span>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="text-muted">미입력</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if user.insurance %}
+                                                        {% if user.insurance == "Y" %}
+                                                            <span class="badge bg-success insurance-badge">Y</span>
+                                                        {% else %}
+                                                            <span class="badge bg-secondary insurance-badge">N</span>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="text-muted">미입력</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if user.email %}
+                                                        <a href="mailto:{{ user.email }}" class="text-decoration-none">
+                                                            {{ user.email }}
+                                                        </a>
+                                                    {% else %}
+                                                        <span class="text-muted">미입력</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">
+                                                        {{ user.created_at.split(' ')[0] }}
+                                                    </small>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="card search-card">
+                            <div class="card-body text-center py-5">
+                                <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                                <h4 class="text-muted">검색 결과가 없습니다</h4>
+                                <p class="text-muted">"{{ query }}"와 일치하는 사용자를 찾을 수 없습니다.</p>
+                                <p class="text-muted">다른 검색어를 시도해보세요.</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="card search-card">
+                        <div class="card-body text-center py-5">
+                            <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                            <h4 class="text-muted">사용자 검색</h4>
+                            <p class="text-muted">위의 검색창에 사용자 이름을 입력하고 검색해보세요.</p>
+                            <p class="text-muted">부분 일치 검색이 지원됩니다.</p>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- 검색 팁 -->
+                {% if query and users %}
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card search-card">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-lightbulb"></i> 검색 팁
+                                </h5>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success"></i> 이름의 일부만 입력해도 검색됩니다</li>
+                                    <li><i class="fas fa-check text-success"></i> 대소문자를 구분하지 않습니다</li>
+                                    <li><i class="fas fa-check text-success"></i> 공백을 포함한 검색이 가능합니다</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card search-card">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-info-circle"></i> 검색 결과 정보
+                                </h5>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="h4 text-primary">{{ total_results }}</div>
+                                            <small class="text-muted">검색된 사용자</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="h4 text-success">
+                                                {{ users | selectattr('position', 'equalto', '프론트엔드') | list | length }}
+                                            </div>
+                                            <small class="text-muted">프론트엔드</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

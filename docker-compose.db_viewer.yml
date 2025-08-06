@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  db-viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile.db_viewer
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./teams.db:/app/teams.db
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1 
