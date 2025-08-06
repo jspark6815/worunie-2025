@@ -84,7 +84,13 @@
                                     {% for user in users %}
                                     <tr>
                                         <td>
-                                            <strong>{{ user.name }}</strong>
+                                            <strong>
+                                                {% if user.display_name %}
+                                                    {{ user.name }} ({{ user.display_name }})
+                                                {% else %}
+                                                    {{ user.name }}
+                                                {% endif %}
+                                            </strong>
                                         </td>
                                         <td>
                                             <code>{{ user.user_id }}</code>

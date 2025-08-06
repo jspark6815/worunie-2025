@@ -3,10 +3,10 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # 필요한 패키지 설치
-RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart
+RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart requests python-dotenv
 
 # 애플리케이션 파일 복사
-COPY app/db_viewer.py .
+COPY db_viewer.py .
 COPY templates/ templates/
 
 # 포트 노출

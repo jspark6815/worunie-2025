@@ -1,8 +1,38 @@
 from sqlalchemy.orm import Session
 from .models import Team, TeamMember, TEAM_COMPOSITION
 import logging
+import requests
+import os
 
 logger = logging.getLogger(__name__)
+
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+
+def get_slack_user_display_name(user_id: str) -> str:
+    """Slack API를 통해 User ID로 실제 표시 이름을 가져옵니다"""
+    if not SLACK_BOT_TOKEN:
+        return None
+
+    try:
+        response = requests.get(
+            "https://slack.com/api/users.info",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            params={"user": user_id}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                user = data.get("user", {})
+                # real_name을 우선적으로 사용, 없으면 display_name 사용
+                display_name = user.get("real_name") or user.get("display_name") or user.get("name")
+                return display_name
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error getting display name for user ID {user_id}: {e}")
+        return None
 
 class TeamBuildingService:
     def __init__(self, db: Session):
@@ -172,7 +202,11 @@ class TeamBuildingService:
             # 멤버 목록
             member_list = []
             for member in members:
-                member_list.append(f"• {member.position}: <@{member.user_id}> ({member.user_name})")
+                display_name = get_slack_user_display_name(member.user_id)
+                if display_name:
+                    member_list.append(f"• {member.position}: {display_name} ({member.user_name})")
+                else:
+                    member_list.append(f"• {member.position}: <@{member.user_id}> ({member.user_name})")
             
             return {
                 "success": True,

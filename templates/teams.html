@@ -97,7 +97,13 @@
                                             <div class="mt-2">
                                                 {% for member in team.members %}
                                                 <div class="d-flex justify-content-between align-items-center mb-1 p-2 bg-light rounded">
-                                                    <span>{{ member.user_name }}</span>
+                                                    <span>
+                                                        {% if member.display_name %}
+                                                            {{ member.user_name }} ({{ member.display_name }})
+                                                        {% else %}
+                                                            {{ member.user_name }}
+                                                        {% endif %}
+                                                    </span>
                                                     {% if member.position %}
                                                         {% if member.position == "프론트엔드" %}
                                                             <span class="badge bg-primary position-badge">{{ member.position }}</span>
