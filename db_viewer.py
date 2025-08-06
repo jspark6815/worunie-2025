@@ -8,8 +8,8 @@ import os
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 load_dotenv()
@@ -44,6 +44,49 @@ def get_slack_user_display_name(user_id: str) -> str:
     except Exception as e:
         print(f"Error getting display name for user ID {user_id}: {e}")
         return None
+
+def get_slack_user_id_by_name(username: str) -> str:
+    """Slack API를 통해 username으로 User ID를 가져옵니다"""
+    if not SLACK_BOT_TOKEN:
+        return None
+
+    try:
+        response = requests.get(
+            "https://slack.com/api/users.list",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                users = data.get("members", [])
+                for user in users:
+                    if user.get("name") == username:
+                        return user.get("id")
+
+        return None
+
+    except Exception as e:
+        print(f"Error getting user ID for username {username}: {e}")
+        return None
+
+def get_member_display_name(user_name: str) -> tuple:
+    """팀 멤버의 display_name을 가져옵니다"""
+    # user_name이 Slack User ID 형식인지 확인 (U로 시작)
+    if user_name.startswith('U'):
+        # 이미 User ID인 경우
+        user_id = user_name
+        display_name = get_slack_user_display_name(user_id)
+        return user_id, display_name
+    else:
+        # username인 경우 User ID로 변환
+        user_id = get_slack_user_id_by_name(user_name)
+        if user_id:
+            display_name = get_slack_user_display_name(user_id)
+            return user_id, display_name
+        else:
+            # User ID를 찾을 수 없는 경우
+            return user_name, None
 
 def get_db_connection():
     """데이터베이스 연결"""
@@ -85,8 +128,111 @@ async def view_users(request: Request):
     
     return templates.TemplateResponse("users.html", {
         "request": request,
-        "users": users
+        "users": users,
+        "total_users": len(users)
     })
+
+@app.get("/users/edit/{user_id}", response_class=HTMLResponse)
+async def edit_user_form(request: Request, user_id: str):
+    """사용자 수정 폼"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT user_id, name, school_major, position, insurance, email
+        FROM users 
+        WHERE user_id = ? AND is_active = 1
+    """, (user_id,))
+    
+    user = cursor.fetchone()
+    conn.close()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    
+    return templates.TemplateResponse("user_form.html", {
+        "request": request,
+        "user": dict(user),
+        "is_edit": True
+    })
+
+@app.post("/users/edit/{user_id}")
+async def edit_user(user_id: str, 
+                   name: str = Form(...),
+                   school_major: str = Form(...),
+                   position: str = Form(...),
+                   insurance: str = Form(...),
+                   email: str = Form(...)):
+    """사용자 수정"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE users 
+            SET name = ?, school_major = ?, position = ?, insurance = ?, email = ?
+            WHERE user_id = ? AND is_active = 1
+        """, (name, school_major, position, insurance, email, user_id))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/users", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"사용자 수정 중 오류가 발생했습니다: {str(e)}")
+
+@app.post("/users/delete/{user_id}")
+async def delete_user(user_id: str):
+    """사용자 삭제 (소프트 삭제)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE users 
+            SET is_active = 0
+            WHERE user_id = ? AND is_active = 1
+        """, (user_id,))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/users", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"사용자 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@app.get("/users/add", response_class=HTMLResponse)
+async def add_user_form(request: Request):
+    """사용자 등록 폼"""
+    return templates.TemplateResponse("user_form.html", {
+        "request": request,
+        "user": None,
+        "is_edit": False
+    })
+
+@app.post("/users/add")
+async def add_user(name: str = Form(...),
+                  user_id: str = Form(...),
+                  school_major: str = Form(...),
+                  position: str = Form(...),
+                  insurance: str = Form(...),
+                  email: str = Form(...)):
+    """사용자 등록"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        """, (user_id, name, school_major, position, insurance, email, datetime.now(), 1))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/users", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"사용자 등록 중 오류가 발생했습니다: {str(e)}")
 
 @app.get("/teams", response_class=HTMLResponse)
 async def view_teams(request: Request):
@@ -105,6 +251,14 @@ async def view_teams(request: Request):
     
     # 각 팀의 멤버 정보 가져오기
     for team in teams:
+        # 팀장의 display_name 가져오기
+        creator_display_name = get_slack_user_display_name(team['creator_id'])
+        team = dict(team)
+        if creator_display_name and creator_display_name != team['creator_name']:
+            team['creator_display_name'] = creator_display_name
+        else:
+            team['creator_display_name'] = None
+        
         cursor.execute("""
             SELECT user_name, position, joined_at
             FROM team_members 
@@ -116,23 +270,117 @@ async def view_teams(request: Request):
         
         # Slack API를 통해 실제 표시 이름 가져오기
         for member in members:
-            display_name = get_slack_user_display_name(member['user_name'])
-            if display_name and display_name != member['user_name']:
+            user_name, display_name = get_member_display_name(member['user_name'])
+            if display_name and display_name != user_name:
                 member = dict(member)
                 member['display_name'] = display_name
             else:
                 member = dict(member)
                 member['display_name'] = None
         
-        team = dict(team)
         team['members'] = members
     
     conn.close()
     
     return templates.TemplateResponse("teams.html", {
         "request": request,
-        "teams": teams
+        "teams": teams,
+        "total_teams": len(teams)
     })
+
+@app.get("/teams/edit/{team_id}", response_class=HTMLResponse)
+async def edit_team_form(request: Request, team_id: int):
+    """팀 수정 폼"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, name, creator_id, creator_name
+        FROM teams 
+        WHERE id = ? AND is_active = 1
+    """, (team_id,))
+    
+    team = cursor.fetchone()
+    conn.close()
+    
+    if not team:
+        raise HTTPException(status_code=404, detail="팀을 찾을 수 없습니다")
+    
+    return templates.TemplateResponse("team_form.html", {
+        "request": request,
+        "team": dict(team),
+        "is_edit": True
+    })
+
+@app.post("/teams/edit/{team_id}")
+async def edit_team(team_id: int, name: str = Form(...)):
+    """팀 수정"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE teams 
+            SET name = ?
+            WHERE id = ? AND is_active = 1
+        """, (name, team_id))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/teams", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"팀 수정 중 오류가 발생했습니다: {str(e)}")
+
+@app.post("/teams/delete/{team_id}")
+async def delete_team(team_id: int):
+    """팀 삭제 (소프트 삭제)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE teams 
+            SET is_active = 0
+            WHERE id = ? AND is_active = 1
+        """, (team_id,))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/teams", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"팀 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@app.get("/teams/add", response_class=HTMLResponse)
+async def add_team_form(request: Request):
+    """팀 등록 폼"""
+    return templates.TemplateResponse("team_form.html", {
+        "request": request,
+        "team": None,
+        "is_edit": False
+    })
+
+@app.post("/teams/add")
+async def add_team(name: str = Form(...),
+                  creator_id: str = Form(...),
+                  creator_name: str = Form(...)):
+    """팀 등록"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO teams (name, creator_id, creator_name, created_at, is_active)
+            VALUES (?, ?, ?, ?, 1)
+        """, (name, creator_id, creator_name, datetime.now(), 1))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/teams", status_code=303)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"팀 등록 중 오류가 발생했습니다: {str(e)}")
 
 @app.get("/statistics", response_class=HTMLResponse)
 async def view_statistics(request: Request):
@@ -177,6 +425,109 @@ async def view_statistics(request: Request):
         "position_stats": position_stats,
         "total_teams": total_teams,
         "team_stats": team_stats
+    })
+
+@app.get("/search", response_class=HTMLResponse)
+async def search_form(request: Request):
+    """검색 폼"""
+    return templates.TemplateResponse("search.html", {
+        "request": request,
+        "users": [],
+        "teams": [],
+        "query": "",
+        "search_type": "users"
+    })
+
+@app.post("/search", response_class=HTMLResponse)
+async def search_results(request: Request, 
+                        query: str = Form(...),
+                        search_type: str = Form(...)):
+    """검색 결과"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    users = []
+    teams = []
+    
+    if search_type == "users" or search_type == "all":
+        # 사용자 검색
+        cursor.execute("""
+            SELECT user_id, name, school_major, position, insurance, email, created_at
+            FROM users 
+            WHERE is_active = 1 AND (
+                name LIKE ? OR 
+                school_major LIKE ? OR 
+                position LIKE ? OR 
+                email LIKE ?
+            )
+            ORDER BY name
+        """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
+        
+        users = cursor.fetchall()
+        
+        # Slack API를 통해 실제 표시 이름 가져오기
+        for user in users:
+            display_name = get_slack_user_display_name(user['user_id'])
+            if display_name and display_name != user['name']:
+                user = dict(user)
+                user['display_name'] = display_name
+            else:
+                user = dict(user)
+                user['display_name'] = None
+    
+    if search_type == "teams" or search_type == "all":
+        # 팀 검색
+        cursor.execute("""
+            SELECT id, name, creator_id, creator_name, created_at, is_active
+            FROM teams 
+            WHERE is_active = 1 AND (
+                name LIKE ? OR 
+                creator_name LIKE ?
+            )
+            ORDER BY created_at DESC
+        """, (f'%{query}%', f'%{query}%'))
+        
+        teams = cursor.fetchall()
+        
+        # 각 팀의 멤버 정보 가져오기
+        for team in teams:
+            # 팀장의 display_name 가져오기
+            creator_display_name = get_slack_user_display_name(team['creator_id'])
+            team = dict(team)
+            if creator_display_name and creator_display_name != team['creator_name']:
+                team['creator_display_name'] = creator_display_name
+            else:
+                team['creator_display_name'] = None
+            
+            cursor.execute("""
+                SELECT user_name, position, joined_at
+                FROM team_members 
+                WHERE team_id = ? 
+                ORDER BY joined_at
+            """, (team['id'],))
+            
+            members = cursor.fetchall()
+            
+            # Slack API를 통해 실제 표시 이름 가져오기
+            for member in members:
+                user_name, display_name = get_member_display_name(member['user_name'])
+                if display_name and display_name != user_name:
+                    member = dict(member)
+                    member['display_name'] = display_name
+                else:
+                    member = dict(member)
+                    member['display_name'] = None
+            
+            team['members'] = members
+    
+    conn.close()
+    
+    return templates.TemplateResponse("search.html", {
+        "request": request,
+        "users": users,
+        "teams": teams,
+        "query": query,
+        "search_type": search_type
     })
 
 if __name__ == "__main__":

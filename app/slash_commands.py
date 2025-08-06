@@ -216,12 +216,19 @@ def handle_create_team(text: str, user_id: str, user_name: str, team_service: Te
             "text": "사용법: `/팀생성 팀명`\n예시: `/팀생성 해커톤팀1`"
         }
     
-    result = team_service.create_team(text, user_id, user_name)
+    # 팀장의 display_name 가져오기
+    creator_display_name = get_slack_user_display_name(user_id)
+    if creator_display_name:
+        creator_name = creator_display_name
+    else:
+        creator_name = user_name
+    
+    result = team_service.create_team(text, user_id, creator_name)
     
     if result["success"]:
         return {
             "response_type": "ephemeral",
-            "text": f"🎉 {result['message']}\n팀장: <@{user_id}>"
+            "text": f"🎉 {result['message']}\n팀장: <@{user_id}> ({creator_name})"
         }
     else:
         return {
@@ -230,19 +237,100 @@ def handle_create_team(text: str, user_id: str, user_name: str, team_service: Te
         }
 
 def handle_add_member(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
-    """팀 멤버 추가 처리"""
+    """팀빌딩 메시지 생성 (채널 전체 메시지)"""
     if not text:
-        help_text = "사용법: `/팀빌딩 포지션 @유저명`\n"
-        help_text += "예시: `/팀빌딩 백엔드 @홍길동`\n"
-        help_text += "가능한 포지션:\n"
-        for position, count in TEAM_COMPOSITION.items():
-            help_text += f"• {position}: {count}명\n"
+        help_text = "사용법: `/팀빌딩 팀명`\n"
+        help_text += "예시: `/팀빌딩 해커톤팀1`\n"
+        help_text += "팀빌딩 메시지를 생성하고, 팀에 합류하고 싶은 사람은 스레드에 댓글을 남겨주세요."
+        return {
+            "response_type": "ephemeral",
+            "text": help_text
+        }
+    
+    team_name = text.strip()
+    
+    # 팀 존재 확인
+    team = team_service.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
+    if not team:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 팀 '{team_name}'을 찾을 수 없습니다.\n먼저 `/팀생성 {team_name}`으로 팀을 생성해주세요."
+        }
+    
+    # 팀빌딩 메시지 생성
+    message_text = f"🎯 *{team_name} 팀빌딩*\n\n"
+    message_text += f"팀장: <@{team.creator_id}> ({team.creator_name})\n"
+    message_text += f"생성일: {team.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+    
+    # 현재 팀 구성 현황
+    members = team_service.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+    message_text += "📊 *현재 팀 구성*\n"
+    
+    position_counts = {}
+    for member in members:
+        position = member.position
+        if position not in position_counts:
+            position_counts[position] = 0
+        position_counts[position] += 1
+    
+    for position, required in TEAM_COMPOSITION.items():
+        current = position_counts.get(position, 0)
+        status = "✅" if current >= required else "❌"
+        message_text += f"{status} {position}: {current}/{required}명\n"
+    
+    message_text += "\n👥 *현재 멤버*\n"
+    if members:
+        for member in members:
+            display_name = get_slack_user_display_name(member.user_id)
+            member_name = display_name if display_name else member.user_name
+            message_text += f"• <@{member.user_id}> ({member_name}) - {member.position}\n"
+    else:
+        message_text += "아직 멤버가 없습니다.\n"
+    
+    message_text += "\n🎉 *팀에 합류하고 싶다면 스레드에 댓글을 남겨주세요!*\n"
+    message_text += "댓글 형식: `@유저명` 또는 `@유저명 포지션`\n"
+    message_text += "예시: `@홍길동` 또는 `@홍길동 백엔드`\n\n"
+    
+    message_text += "📋 *팀 구성 규칙*\n"
+    for position, count in TEAM_COMPOSITION.items():
+        message_text += f"• {position}: {count}명\n"
+    
+    # Slack Web API를 사용하여 채널에 메시지 전송
+    try:
+        headers = {
+            "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        # 현재 채널 ID를 가져오기 위해 임시로 ephemeral 응답을 보내고, 
+        # 실제 메시지는 별도로 전송
+        response = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            json={
+                "channel": "C099TRKQ2LQ",  # team-building 채널 ID (하드코딩)
+                "text": message_text
+            },
+            headers=headers
+        )
+        
+        if response.status_code == 200 and response.json().get("ok"):
             return {
-        "response_type": "ephemeral",
-        "text": help_text
-    }
-
-
+                "response_type": "ephemeral",
+                "text": f"✅ '{team_name}' 팀빌딩 메시지가 채널에 게시되었습니다!"
+            }
+        else:
+            logger.error(f"Failed to post message: {response.text}")
+            return {
+                "response_type": "ephemeral",
+                "text": f"❌ 메시지 전송에 실패했습니다. 다시 시도해주세요."
+            }
+            
+    except Exception as e:
+        logger.error(f"Error posting message: {e}")
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 메시지 전송 중 오류가 발생했습니다: {str(e)}"
+        }
 
 def handle_user_info(text: str, user_service: UserService):
     """사용자 정보 조회 처리"""
@@ -542,14 +630,14 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
     if not text:
         return {
             "response_type": "ephemeral",
-            "text": "사용법: `/팀원삭제 팀명 유저명`\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
+            "text": "사용법: `/팀원삭제 팀명 @유저명`\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
         }
     
     parts = text.split()
     if len(parts) != 2:
         return {
             "response_type": "ephemeral",
-            "text": "사용법: `/팀원삭제 팀명 유저명`\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
+            "text": "사용법: `/팀원삭제 팀명 @유저명`\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
         }
     
     team_name, target_user = parts
@@ -560,18 +648,54 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
             "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
         }
     
-    target_user_id = target_user[1:]
+    # Slack 멘션 형식 처리: <@U1234567890|username> 또는 @username
+    target_user_id = None
+    target_user_name = None
+    
+    if target_user.startswith('<@') and '|' in target_user and target_user.endswith('>'):
+        # 형식: <@U1234567890|username>
+        parts = target_user[2:-1].split('|')
+        if len(parts) == 2:
+            target_user_id = parts[0]
+            target_user_name = parts[1]
+    elif target_user.startswith('@'):
+        # 형식: @username
+        target_user_name = target_user[1:]
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
+        }
+    
+    # target_user_id가 있으면 바로 사용, 없으면 이름으로 찾기
+    if target_user_id:
+        slack_user_id = target_user_id
+    else:
+        # 이름으로 Slack User ID 찾기
+        slack_user_id = get_slack_user_id_by_name(target_user_name)
+        if not slack_user_id:
+            return {
+                "response_type": "ephemeral",
+                "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
+            }
+    
+    # Slack User ID로 실제 한글 닉네임 가져오기
+    display_name = get_slack_user_display_name(slack_user_id)
+    if display_name:
+        member_name = display_name
+    else:
+        member_name = target_user_name or slack_user_id
     
     # 사용자 권한 확인
     user_info = get_user_info(user_id)
     is_staff = user_info.get("is_staff", False)
     
-    result = team_service.remove_member_from_team(team_name, target_user_id, user_id, is_staff=is_staff)
+    result = team_service.remove_member_from_team(team_name, slack_user_id, user_id, is_staff=is_staff)
     
     if result["success"]:
         return {
             "response_type": "ephemeral",
-            "text": f"✅ {result['message']}"
+            "text": f"✅ {result['message']}\n삭제된 멤버: <@{slack_user_id}> ({member_name})"
         }
     else:
         return {
@@ -587,8 +711,9 @@ def handle_help_command():
     help_text += "• `/팀생성 팀명` - 새로운 팀을 생성합니다\n"
     help_text += "  예시: `/팀생성 해커톤팀1`\n\n"
     
-    help_text += "• `/팀빌딩 포지션 @유저명` - 팀에 멤버를 추가합니다\n"
-    help_text += "  예시: `/팀빌딩 BE @홍길동`\n"
+    help_text += "• `/팀빌딩 팀명` - 팀빌딩 메시지를 생성합니다\n"
+    help_text += "  예시: `/팀빌딩 해커톤팀1`\n"
+    help_text += "  채널에 팀빌딩 메시지를 게시하고, 스레드 댓글로 팀에 합류할 수 있습니다.\n"
     help_text += "  가능한 포지션:\n"
     for position, count in TEAM_COMPOSITION.items():
         help_text += f"    - {position}: {count}명\n"
