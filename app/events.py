@@ -64,7 +64,7 @@ async def handle_events(
         user_id = event["user"]
         channel_id = event["channel"]
         logger.info(f"Member joined channel: user={user_id}, channel={channel_id}")
-        send_channel_welcome_message(user_id, channel_id)
+        # send_channel_welcome_message(user_id, channel_id)
 
     return {"ok": True}
 
@@ -86,10 +86,10 @@ def send_welcome_dm(user_id: str):
     welcome_text = (
         f"🎉 워런톤에 오신 걸 환영합니다, <@{user_id}>님!\n\n"
         "🔔 필수 채널 안내\n"
-        "• #공지사항\n"
-        "• #가이드\n"
-        "• #자기소개 작성\n"
-        "• 팀 빌딩은 `/팀빌딩` 명령어를 사용하세요!\n\n"
+        "• #announcement\n"
+        "• #guide\n"
+        "• #self-introduce\n"
+        "• #team-building\n"
         "즐거운 해커톤 되세요! 🚀"
     )
     requests.post(
