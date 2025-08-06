@@ -10,6 +10,19 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, unique=True, index=True)  # Slack user ID
+    name = Column(String, nullable=False)
+    school_major = Column(String)  # 학교/전공
+    position = Column(String)  # 프론트엔드, 백엔드, 기획, 디자인
+    insurance = Column(String)  # Y/N
+    email = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
 class Team(Base):
     __tablename__ = "teams"
     
@@ -39,7 +52,10 @@ class TeamMember(Base):
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
 
-# 팀 구성 규칙
+# 포지션 정의
+POSITIONS = ["프론트엔드", "백엔드", "기획", "디자인"]
+
+# 팀 구성 규칙 (기존과 동일하게 유지)
 TEAM_COMPOSITION = {
     "BE": 2,  # BE 개발자 2명
     "FE": 1,  # FE 개발자 1명

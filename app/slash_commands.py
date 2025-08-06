@@ -7,8 +7,9 @@ import logging
 import urllib.parse
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from sqlalchemy.orm import Session
-from .models import get_db, TEAM_COMPOSITION
+from .models import get_db, TEAM_COMPOSITION, POSITIONS
 from .team_service import TeamBuildingService
+from .user_service import UserService
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -96,6 +97,13 @@ async def handle_slash_commands(
     logger.info(f"Parsed params: {params}")
     
     team_service = TeamBuildingService(db)
+    user_service = UserService(db)
+    
+    # 사용자 ID 자동 업데이트 (임의 ID를 실제 Slack User ID로 변경)
+    if user_id and user_name:
+        update_result = user_service.update_user_slack_id(user_name, user_id)
+        if update_result["success"]:
+            logger.info(f"User ID updated for {user_name}: {update_result['message']}")
     
     if command == '/팀생성':
         return handle_create_team(text, user_id, user_name, team_service)
@@ -109,6 +117,10 @@ async def handle_slash_commands(
         return handle_delete_team(text, user_id, user_name, team_service)
     elif command == '/팀원삭제':
         return handle_remove_member(text, user_id, user_name, team_service)
+    elif command == '/사용자정보':
+        return handle_user_info(text, user_service)
+    elif command == '/사용자목록':
+        return handle_user_list(user_service)
     elif command == '/명령어':
         return handle_help_command()
     else:
@@ -143,14 +155,85 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     """팀 멤버 추가 처리"""
     if not text:
         help_text = "사용법: `/팀빌딩 포지션 @유저명`\n"
-        help_text += "예시: `/팀빌딩 BE @john`\n"
+        help_text += "예시: `/팀빌딩 백엔드 @john`\n"
         help_text += "가능한 포지션:\n"
         for position, count in TEAM_COMPOSITION.items():
             help_text += f"• {position}: {count}명\n"
+            return {
+        "response_type": "ephemeral",
+        "text": help_text
+    }
+
+
+
+def handle_user_info(text: str, user_service: UserService):
+    """사용자 정보 조회 처리"""
+    if not text:
         return {
             "response_type": "ephemeral",
-            "text": help_text
+            "text": "사용법: `/사용자정보 @유저명`\n예시: `/사용자정보 @john`"
         }
+    
+    # @제거하고 user_id 추출
+    if not text.startswith('@'):
+        return {
+            "response_type": "ephemeral",
+            "text": "유저명은 @로 시작해야 합니다.\n예시: `/사용자정보 @john`"
+        }
+    
+    target_user_id = text[1:]  # @ 제거
+    
+    result = user_service.get_user_info(target_user_id)
+    
+    if result["success"]:
+        user = result["user"]
+        response_text = f"👤 *{user['name']}* 사용자 정보\n"
+        response_text += f"Slack ID: <@{user['user_id']}>\n"
+        response_text += f"학교/전공: {user['school_major'] or '미입력'}\n"
+        response_text += f"포지션: {user['position'] or '미입력'}\n"
+        response_text += f"4대보험: {user['insurance'] or '미입력'}\n"
+        response_text += f"이메일: {user['email'] or '미입력'}\n"
+        response_text += f"등록일: {user['created_at']}"
+        
+        return {
+            "response_type": "ephemeral",
+            "text": response_text
+        }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
+
+def handle_user_list(user_service: UserService):
+    """사용자 목록 조회 처리"""
+    result = user_service.get_all_users()
+    
+    if result["success"]:
+        if not result["users"]:
+            return {
+                "response_type": "ephemeral",
+                "text": "👥 *사용자 목록*\n아직 등록된 사용자가 없습니다.\n`/사용자등록`으로 사용자를 등록해보세요!"
+            }
+        
+        response_text = "👥 *사용자 목록*\n"
+        for user in result["users"]:
+            response_text += f"• *{user['name']}* (<@{user['user_id']}>)\n"
+            response_text += f"  포지션: {user['position'] or '미입력'}\n"
+            response_text += f"  학교/전공: {user['school_major'] or '미입력'}\n"
+            response_text += f"  4대보험: {user['insurance'] or '미입력'}\n\n"
+        
+        return {
+            "response_type": "ephemeral",
+            "text": response_text
+        }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
+
+
     
     # 텍스트 파싱: "BE @john" -> position="BE", target_user="@john"
     parts = text.split()
@@ -350,6 +433,12 @@ def handle_help_command():
     
     help_text += "• `/팀원삭제 팀명 @유저명` - 팀에서 멤버를 삭제합니다 (팀장 또는 관리자만 가능)\n"
     help_text += "  예시: `/팀원삭제 해커톤팀1 @john`\n\n"
+    
+    help_text += "👤 *사용자 조회 명령어*\n"
+    help_text += "• `/사용자정보 @유저명` - 사용자 정보를 조회합니다\n"
+    help_text += "  예시: `/사용자정보 @john`\n\n"
+    
+    help_text += "• `/사용자목록` - 모든 사용자 목록을 조회합니다\n\n"
     
     help_text += "📊 *팀 구성 규칙*\n"
     help_text += "• BE 개발자: 2명\n"
