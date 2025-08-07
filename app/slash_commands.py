@@ -85,23 +85,25 @@ def get_slack_user_id_by_name(user_name: str) -> str:
         logger.info(f"Response status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()
-            logger.info(f"Response data: {data}")
+            logger.info(f"Response ok: {data.get('ok')}")
+            logger.info(f"Response error: {data.get('error')}")
             
             if data.get("ok"):
                 users = data.get("users", [])
                 logger.info(f"Found {len(users)} users in workspace")
                 
                 # 모든 사용자 정보 로깅 (디버깅용)
-                for i, user in enumerate(users[:5]):  # 처음 5명만 로깅
-                    logger.info(f"User {i+1}: name='{user.get('name')}', real_name='{user.get('real_name')}', display_name='{user.get('display_name')}'")
+                for i, user in enumerate(users[:10]):  # 처음 10명 로깅
+                    logger.info(f"User {i+1}: name='{user.get('name')}', real_name='{user.get('real_name')}', display_name='{user.get('display_name')}', id='{user.get('id')}'")
                 
                 for user in users:
                     user_name_slack = user.get("name")
                     real_name_slack = user.get("real_name")
+                    display_name_slack = user.get("display_name")
                     
-                    logger.info(f"Checking user: name='{user_name_slack}', real_name='{real_name_slack}' against search='{user_name}'")
+                    logger.info(f"Checking user: name='{user_name_slack}', real_name='{real_name_slack}', display_name='{display_name_slack}' against search='{user_name}'")
                     
-                    if user_name_slack == user_name or real_name_slack == user_name:
+                    if user_name_slack == user_name or real_name_slack == user_name or display_name_slack == user_name:
                         user_id = user.get("id")
                         logger.info(f"Found matching user! ID: {user_id}")
                         return user_id
