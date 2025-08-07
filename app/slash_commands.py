@@ -76,6 +76,45 @@ def get_slack_user_id_by_name(user_name: str) -> str:
         return None
 
     try:
+        # 먼저 users.search API를 시도
+        logger.info("Making request to Slack API users.search")
+        search_response = requests.get(
+            "https://slack.com/api/users.search",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            params={"query": user_name}
+        )
+        
+        logger.info(f"Search response status: {search_response.status_code}")
+        if search_response.status_code == 200:
+            search_data = search_response.json()
+            logger.info(f"Search response ok: {search_data.get('ok')}")
+            logger.info(f"Search response error: {search_data.get('error')}")
+            
+            if search_data.get("ok"):
+                search_users = search_data.get("users", {}).get("matches", [])
+                logger.info(f"Found {len(search_users)} users in search")
+                
+                for user in search_users:
+                    user_name_slack = user.get("name")
+                    real_name_slack = user.get("real_name")
+                    display_name_slack = user.get("display_name")
+                    
+                    logger.info(f"Search result user: name='{user_name_slack}', real_name='{real_name_slack}', display_name='{display_name_slack}'")
+                    
+                    if user_name_slack == user_name or real_name_slack == user_name or display_name_slack == user_name:
+                        user_id = user.get("id")
+                        logger.info(f"Found matching user in search! ID: {user_id}")
+                        return user_id
+                    
+                    # 부분 문자열 매칭도 시도
+                    if (user_name_slack and user_name in user_name_slack) or \
+                       (real_name_slack and user_name in real_name_slack) or \
+                       (display_name_slack and user_name in display_name_slack):
+                        user_id = user.get("id")
+                        logger.info(f"Found partial matching user in search! ID: {user_id}")
+                        return user_id
+
+        # users.search가 실패하면 users.list를 시도
         logger.info("Making request to Slack API users.list")
         response = requests.get(
             "https://slack.com/api/users.list",
@@ -106,6 +145,14 @@ def get_slack_user_id_by_name(user_name: str) -> str:
                     if user_name_slack == user_name or real_name_slack == user_name or display_name_slack == user_name:
                         user_id = user.get("id")
                         logger.info(f"Found matching user! ID: {user_id}")
+                        return user_id
+                    
+                    # 부분 문자열 매칭도 시도
+                    if (user_name_slack and user_name in user_name_slack) or \
+                       (real_name_slack and user_name in real_name_slack) or \
+                       (display_name_slack and user_name in display_name_slack):
+                        user_id = user.get("id")
+                        logger.info(f"Found partial matching user! ID: {user_id}")
                         return user_id
 
         logger.warning(f"Failed to find user ID for name: {user_name}")
