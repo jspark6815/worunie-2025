@@ -208,14 +208,13 @@ async def quick_edit_slack_id(request: Request, user_id: str, new_user_id: str =
 
 @app.get("/teams", response_class=HTMLResponse)
 async def view_teams(request: Request):
-    """팀 목록 조회"""
+    """팀 목록 조회 (삭제된 팀 포함)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
         SELECT id, name, creator_id, creator_name, created_at, is_active
         FROM teams 
-        WHERE is_active = 1 
         ORDER BY created_at DESC
     """)
     
@@ -330,6 +329,27 @@ async def delete_team(request: Request, team_id: int):
         cursor.execute("""
             UPDATE teams 
             SET is_active = 0
+            WHERE id = ?
+        """, (team_id,))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/teams", status_code=302)
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/teams/restore/{team_id}", response_class=HTMLResponse)
+async def restore_team(request: Request, team_id: int):
+    """팀 복구 (삭제 취소)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE teams 
+            SET is_active = 1
             WHERE id = ?
         """, (team_id,))
         
