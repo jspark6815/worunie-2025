@@ -359,6 +359,15 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     if target_user_id:
         logger.info(f"Using provided target_user_id: {target_user_id}")
         slack_user_id = target_user_id
+        
+        # Slack User ID로 실제 한글 닉네임 가져오기
+        display_name = get_slack_user_display_name(slack_user_id)
+        if display_name:
+            member_name = display_name
+            logger.info(f"Found display name from Slack API: {display_name}")
+        else:
+            member_name = target_user_name or slack_user_id
+            logger.warning(f"Could not get display name from Slack API, using: {member_name}")
     else:
         # 이름으로 Slack User ID 찾기
         logger.info(f"Searching for Slack user ID by name: {target_user_name}")
@@ -371,13 +380,13 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
                 "response_type": "ephemeral",
                 "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
             }
-    
-    # Slack User ID로 실제 한글 닉네임 가져오기
-    display_name = get_slack_user_display_name(slack_user_id)
-    if display_name:
-        member_name = display_name
-    else:
-        member_name = target_user_name or slack_user_id
+        
+        # Slack User ID로 실제 한글 닉네임 가져오기
+        display_name = get_slack_user_display_name(slack_user_id)
+        if display_name:
+            member_name = display_name
+        else:
+            member_name = target_user_name or slack_user_id
     
     # display_name을 기준으로 DB에서 사용자 찾기
     from .user_service import UserService
@@ -388,7 +397,9 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     found_user = None
     
     if all_users_result["success"]:
+        logger.info(f"Searching for user with name: '{display_name}' in {len(all_users_result['users'])} users")
         for user in all_users_result["users"]:
+            logger.info(f"Checking user: '{user['name']}' against '{display_name}'")
             if user['name'] == display_name:
                 found_user = user
                 logger.info(f"Found user by display_name: {display_name}")
@@ -396,6 +407,7 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     
     # 사용자를 찾지 못했으면 target_user_name으로도 검색
     if not found_user and target_user_name:
+        logger.info(f"User not found by display_name, trying target_user_name: '{target_user_name}'")
         for user in all_users_result["users"]:
             if user['name'] == target_user_name:
                 found_user = user
