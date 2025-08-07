@@ -68,23 +68,43 @@ def verify_slack_request(body: bytes, signature: str, timestamp: str):
 
 def get_slack_user_id_by_name(user_name: str) -> str:
     """Slack API를 통해 사용자명으로 User ID를 가져옵니다"""
+    logger.info(f"=== get_slack_user_id_by_name called ===")
+    logger.info(f"Searching for user_name: '{user_name}'")
+    
     if not SLACK_BOT_TOKEN:
         logger.warning("SLACK_BOT_TOKEN not found, cannot get user ID by name")
         return None
 
     try:
+        logger.info("Making request to Slack API users.list")
         response = requests.get(
             "https://slack.com/api/users.list",
             headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"}
         )
 
+        logger.info(f"Response status: {response.status_code}")
         if response.status_code == 200:
             data = response.json()
+            logger.info(f"Response data: {data}")
+            
             if data.get("ok"):
                 users = data.get("users", [])
+                logger.info(f"Found {len(users)} users in workspace")
+                
+                # 모든 사용자 정보 로깅 (디버깅용)
+                for i, user in enumerate(users[:5]):  # 처음 5명만 로깅
+                    logger.info(f"User {i+1}: name='{user.get('name')}', real_name='{user.get('real_name')}', display_name='{user.get('display_name')}'")
+                
                 for user in users:
-                    if user.get("name") == user_name or user.get("real_name") == user_name:
-                        return user.get("id")
+                    user_name_slack = user.get("name")
+                    real_name_slack = user.get("real_name")
+                    
+                    logger.info(f"Checking user: name='{user_name_slack}', real_name='{real_name_slack}' against search='{user_name}'")
+                    
+                    if user_name_slack == user_name or real_name_slack == user_name:
+                        user_id = user.get("id")
+                        logger.info(f"Found matching user! ID: {user_id}")
+                        return user_id
 
         logger.warning(f"Failed to find user ID for name: {user_name}")
         return None
@@ -280,13 +300,20 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
             "text": "유저명은 @로 시작해야 합니다.\n사용법: `/팀빌딩 @홍길동`"
         }
     
+    logger.info(f"Parsed target_user_id: {target_user_id}, target_user_name: {target_user_name}")
+    
     # target_user_id가 있으면 바로 사용, 없으면 이름으로 찾기
     if target_user_id:
+        logger.info(f"Using provided target_user_id: {target_user_id}")
         slack_user_id = target_user_id
     else:
         # 이름으로 Slack User ID 찾기
+        logger.info(f"Searching for Slack user ID by name: {target_user_name}")
         slack_user_id = get_slack_user_id_by_name(target_user_name)
+        logger.info(f"Result from get_slack_user_id_by_name: {slack_user_id}")
+        
         if not slack_user_id:
+            logger.warning(f"User not found in Slack workspace: {target_user_name}")
             return {
                 "response_type": "ephemeral",
                 "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
