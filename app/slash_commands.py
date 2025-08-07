@@ -265,7 +265,6 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     target_user_id = None
     target_user_name = None
     
-<<<<<<< HEAD
     if text.startswith('<@') and '|' in text and text.endswith('>'):
         # 형식: <@U1234567890|username>
         parts = text[2:-1].split('|')
@@ -276,99 +275,6 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
         # 형식: @username
         target_user_name = text[1:]
     else:
-=======
-    # 현재 팀 구성 현황
-    members = team_service.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
-    message_text += "📊 *현재 팀 구성*\n"
-    
-    # 포지션별 현재 인원수 계산 (팀장 포함)
-    position_counts = {}
-    for member in members:
-        position = member.position
-        if position not in position_counts:
-            position_counts[position] = 0
-        position_counts[position] += 1
-    
-    # 팀장의 포지션을 확인하고 카운트에 추가
-    from .user_service import UserService
-    user_service = UserService(team_service.db)
-    creator_info = user_service.get_user_info(team.creator_id)
-    
-    if creator_info["success"]:
-        creator_position = creator_info["user"].get("position", "")
-        # DB 포지션을 팀 구성 규칙에 맞게 매핑
-        position_mapping = {
-            "백엔드": "BE",
-            "프론트엔드": "FE", 
-            "디자인": "Designer",
-            "기획": "Planner"
-        }
-        mapped_position = position_mapping.get(creator_position, creator_position)
-        if mapped_position in position_counts:
-            position_counts[mapped_position] += 1
-        else:
-            position_counts[mapped_position] = 1
-    
-    for position, count in position_counts.items():
-        message_text += f"• {position}: {count}명\n"
-    
-    message_text += "\n👥 *현재 멤버*\n"
-    # 팀장을 먼저 표시
-    creator_display_name = get_slack_user_display_name(team.creator_id)
-    creator_name = creator_display_name if creator_display_name else team.creator_name
-    message_text += f"• 팀장: <@{team.creator_id}> ({creator_name})\n"
-    
-    if members:
-        for member in members:
-            display_name = get_slack_user_display_name(member.user_id)
-            member_name = display_name if display_name else member.user_name
-            message_text += f"• <@{member.user_id}> ({member_name}) - {member.position}\n"
-    else:
-        message_text += "아직 추가 멤버가 없습니다.\n"
-    
-    message_text += "\n🎉 *팀에 합류하고 싶다면 스레드에 댓글을 남겨주세요!*\n"
-    message_text += "댓글 형식: `@유저명` 또는 `@유저명 포지션`\n"
-    message_text += "예시: `@홍길동` 또는 `@홍길동 백엔드`\n\n"
-    
-    message_text += "📋 *가능한 포지션*\n"
-    message_text += "• BE (백엔드)\n"
-    message_text += "• FE (프론트엔드)\n"
-    message_text += "• Designer (디자인)\n"
-    message_text += "• Planner (기획)\n"
-    
-    # Slack Web API를 사용하여 채널에 메시지 전송
-    try:
-        headers = {
-            "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        
-        # 현재 채널 ID를 가져오기 위해 임시로 ephemeral 응답을 보내고, 
-        # 실제 메시지는 별도로 전송
-        response = requests.post(
-            "https://slack.com/api/chat.postMessage",
-            json={
-                "channel": "C099TRKQ2LQ",  # team-building 채널 ID (하드코딩)
-                "text": message_text
-            },
-            headers=headers
-        )
-        
-        if response.status_code == 200 and response.json().get("ok"):
-            return {
-                "response_type": "ephemeral",
-                "text": f"✅ '{team_name}' 팀빌딩 메시지가 채널에 게시되었습니다!"
-            }
-        else:
-            logger.error(f"Failed to post message: {response.text}")
-            return {
-                "response_type": "ephemeral",
-                "text": f"❌ 메시지 전송에 실패했습니다. 다시 시도해주세요."
-            }
-            
-    except Exception as e:
-        logger.error(f"Error posting message: {e}")
->>>>>>> b9235a4edbc661c000faf6b0570b0507bf647a80
         return {
             "response_type": "ephemeral",
             "text": "유저명은 @로 시작해야 합니다.\n사용법: `/팀빌딩 @홍길동`"
@@ -392,6 +298,43 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
         member_name = display_name
     else:
         member_name = target_user_name or slack_user_id
+    
+    # display_name을 기준으로 DB에서 사용자 찾기
+    from .user_service import UserService
+    user_service = UserService(team_service.db)
+    
+    # 먼저 display_name으로 사용자 검색
+    all_users_result = user_service.get_all_users()
+    found_user = None
+    
+    if all_users_result["success"]:
+        for user in all_users_result["users"]:
+            if user['name'] == display_name:
+                found_user = user
+                logger.info(f"Found user by display_name: {display_name}")
+                break
+    
+    # 사용자를 찾지 못했으면 target_user_name으로도 검색
+    if not found_user and target_user_name:
+        for user in all_users_result["users"]:
+            if user['name'] == target_user_name:
+                found_user = user
+                logger.info(f"Found user by target_user_name: {target_user_name}")
+                break
+    
+    # 사용자를 찾지 못했으면 사용자 등록 안내
+    if not found_user:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 사용자 '{display_name}'이(가) 데이터베이스에 등록되어 있지 않습니다.\n"
+                    f"웹 DB 뷰어(http://43.200.253.84:8081)에서 사용자 정보를 등록해주세요.\n"
+                    f"등록된 이름: {display_name}"
+        }
+    
+    # 사용자 정보 업데이트 (Slack ID 연결)
+    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
+    if update_result["success"]:
+        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
     
     # 팀원 추가 (포지션은 자동으로 결정)
     result = team_service.add_member_to_team(team.name, slack_user_id, member_name)
@@ -785,19 +728,12 @@ def handle_help_command():
     help_text += "• `/팀생성 팀명` - 새로운 팀을 생성합니다\n"
     help_text += "  예시: `/팀생성 해커톤팀1`\n\n"
     
-<<<<<<< HEAD
     help_text += "• `/팀빌딩 @유저명` - 팀원을 추가합니다 (팀장만 가능)\n"
     help_text += "  팀장의 팀에 팀원을 추가합니다. 포지션은 자동으로 결정됩니다.\n"
     help_text += "  가능한 포지션:\n"
     for position, count in TEAM_COMPOSITION.items():
         help_text += f"    - {position}: {count}명\n"
     help_text += "\n"
-=======
-    help_text += "• `/팀빌딩 팀명` - 팀빌딩 메시지를 생성합니다\n"
-    help_text += "  예시: `/팀빌딩 해커톤팀1`\n"
-    help_text += "  채널에 팀빌딩 메시지를 게시하고, 스레드 댓글로 팀에 합류할 수 있습니다.\n"
-    help_text += "  가능한 포지션: BE, FE, Designer, Planner\n\n"
->>>>>>> b9235a4edbc661c000faf6b0570b0507bf647a80
     
     help_text += "• `/팀정보 팀명` - 팀의 상세 정보를 조회합니다\n"
     help_text += "  예시: `/팀정보 해커톤팀1`\n\n"
