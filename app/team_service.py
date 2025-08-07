@@ -226,32 +226,59 @@ class TeamBuildingService:
             
             members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
             
-            # 팀 구성 상태 확인
-            team_status = {}
-            for position, required_count in TEAM_COMPOSITION.items():
-                current_count = len([m for m in members if m.position == position])
-                team_status[position] = {
-                    "required": required_count,
-                    "current": current_count,
-                    "filled": current_count >= required_count
-                }
+            # 팀장을 팀원에 포함시키기 위해 팀장 정보도 추가
+            # 팀장의 display_name 가져오기
+            creator_display_name = get_slack_user_display_name(team.creator_id)
+            creator_name = creator_display_name if creator_display_name else team.creator_name
             
-            # 멤버 목록
+            # 포지션별 현재 인원수 계산 (팀장 포함)
+            position_counts = {}
+            for member in members:
+                position = member.position
+                if position not in position_counts:
+                    position_counts[position] = 0
+                position_counts[position] += 1
+            
+            # 팀장의 포지션을 확인하고 카운트에 추가
+            # 팀장의 포지션은 DB에서 가져오거나 기본값 사용
+            from .user_service import UserService
+            user_service = UserService(self.db)
+            creator_info = user_service.get_user_info(team.creator_id)
+            
+            if creator_info["success"]:
+                creator_position = creator_info["user"].get("position", "")
+                # DB 포지션을 팀 구성 규칙에 맞게 매핑
+                position_mapping = {
+                    "백엔드": "BE",
+                    "프론트엔드": "FE", 
+                    "디자인": "Designer",
+                    "기획": "Planner"
+                }
+                mapped_position = position_mapping.get(creator_position, creator_position)
+                if mapped_position in position_counts:
+                    position_counts[mapped_position] += 1
+                else:
+                    position_counts[mapped_position] = 1
+            
+            # 멤버 목록 (팀장 포함)
             member_list = []
+            
+            # 팀장을 먼저 추가
+            member_list.append(f"• 팀장: {creator_name} (<@{team.creator_id}>)")
+            
+            # 나머지 멤버들 추가
             for member in members:
                 display_name = get_slack_user_display_name(member.user_id)
-                if display_name:
-                    member_list.append(f"• {member.position}: {display_name} ({member.user_name})")
-                else:
-                    member_list.append(f"• {member.position}: <@{member.user_id}> ({member.user_name})")
+                member_name = display_name if display_name else member.user_name
+                member_list.append(f"• {member.position}: {member_name} (<@{member.user_id}>)")
             
             return {
                 "success": True,
                 "team_name": team_name,
                 "members": member_list,
-                "status": team_status,
+                "position_counts": position_counts,
                 "created_at": team.created_at.strftime("%Y-%m-%d %H:%M"),
-                "creator_name": team.creator_name,
+                "creator_name": creator_name,
                 "creator_id": team.creator_id
             }
             

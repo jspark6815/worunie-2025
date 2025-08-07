@@ -1,0 +1,56 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+        
+    - name: Add EC2 to known hosts
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Deploy to EC2
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+        SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      run: |
+        echo "🚀 Starting deployment to EC2..."
+        
+        # 프로젝트 파일들을 EC2로 전송
+        echo "📤 Uploading files to EC2..."
+        rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' \
+          ./ $EC2_USER@$EC2_HOST:/home/$EC2_USER/slack-bot/worunie-2025/
+        
+        # 배포 스크립트 실행 권한 부여
+        ssh $EC2_USER@$EC2_HOST "chmod +x /home/$EC2_USER/slack-bot/worunie-2025/deploy.sh"
+        
+        # EC2 서버에서 배포 실행
+        echo "🔨 Running deployment script..."
+        ssh $EC2_USER@$EC2_HOST << 'EOF'
+          cd /home/$EC2_USER/slack-bot/worunie-2025
+          
+          # 환경 변수 설정
+          export SLACK_SIGNING_SECRET="$SLACK_SIGNING_SECRET"
+          export SLACK_BOT_TOKEN="$SLACK_BOT_TOKEN"
+          
+          # 배포 스크립트 실행
+          ./deploy.sh
+        EOF
+        
+        echo "✅ Deployment completed!"
