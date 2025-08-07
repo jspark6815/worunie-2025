@@ -265,6 +265,7 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     target_user_id = None
     target_user_name = None
     
+<<<<<<< HEAD
     if text.startswith('<@') and '|' in text and text.endswith('>'):
         # 형식: <@U1234567890|username>
         parts = text[2:-1].split('|')
@@ -275,6 +276,99 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
         # 형식: @username
         target_user_name = text[1:]
     else:
+=======
+    # 현재 팀 구성 현황
+    members = team_service.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+    message_text += "📊 *현재 팀 구성*\n"
+    
+    # 포지션별 현재 인원수 계산 (팀장 포함)
+    position_counts = {}
+    for member in members:
+        position = member.position
+        if position not in position_counts:
+            position_counts[position] = 0
+        position_counts[position] += 1
+    
+    # 팀장의 포지션을 확인하고 카운트에 추가
+    from .user_service import UserService
+    user_service = UserService(team_service.db)
+    creator_info = user_service.get_user_info(team.creator_id)
+    
+    if creator_info["success"]:
+        creator_position = creator_info["user"].get("position", "")
+        # DB 포지션을 팀 구성 규칙에 맞게 매핑
+        position_mapping = {
+            "백엔드": "BE",
+            "프론트엔드": "FE", 
+            "디자인": "Designer",
+            "기획": "Planner"
+        }
+        mapped_position = position_mapping.get(creator_position, creator_position)
+        if mapped_position in position_counts:
+            position_counts[mapped_position] += 1
+        else:
+            position_counts[mapped_position] = 1
+    
+    for position, count in position_counts.items():
+        message_text += f"• {position}: {count}명\n"
+    
+    message_text += "\n👥 *현재 멤버*\n"
+    # 팀장을 먼저 표시
+    creator_display_name = get_slack_user_display_name(team.creator_id)
+    creator_name = creator_display_name if creator_display_name else team.creator_name
+    message_text += f"• 팀장: <@{team.creator_id}> ({creator_name})\n"
+    
+    if members:
+        for member in members:
+            display_name = get_slack_user_display_name(member.user_id)
+            member_name = display_name if display_name else member.user_name
+            message_text += f"• <@{member.user_id}> ({member_name}) - {member.position}\n"
+    else:
+        message_text += "아직 추가 멤버가 없습니다.\n"
+    
+    message_text += "\n🎉 *팀에 합류하고 싶다면 스레드에 댓글을 남겨주세요!*\n"
+    message_text += "댓글 형식: `@유저명` 또는 `@유저명 포지션`\n"
+    message_text += "예시: `@홍길동` 또는 `@홍길동 백엔드`\n\n"
+    
+    message_text += "📋 *가능한 포지션*\n"
+    message_text += "• BE (백엔드)\n"
+    message_text += "• FE (프론트엔드)\n"
+    message_text += "• Designer (디자인)\n"
+    message_text += "• Planner (기획)\n"
+    
+    # Slack Web API를 사용하여 채널에 메시지 전송
+    try:
+        headers = {
+            "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        # 현재 채널 ID를 가져오기 위해 임시로 ephemeral 응답을 보내고, 
+        # 실제 메시지는 별도로 전송
+        response = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            json={
+                "channel": "C099TRKQ2LQ",  # team-building 채널 ID (하드코딩)
+                "text": message_text
+            },
+            headers=headers
+        )
+        
+        if response.status_code == 200 and response.json().get("ok"):
+            return {
+                "response_type": "ephemeral",
+                "text": f"✅ '{team_name}' 팀빌딩 메시지가 채널에 게시되었습니다!"
+            }
+        else:
+            logger.error(f"Failed to post message: {response.text}")
+            return {
+                "response_type": "ephemeral",
+                "text": f"❌ 메시지 전송에 실패했습니다. 다시 시도해주세요."
+            }
+            
+    except Exception as e:
+        logger.error(f"Error posting message: {e}")
+>>>>>>> b9235a4edbc661c000faf6b0570b0507bf647a80
         return {
             "response_type": "ephemeral",
             "text": "유저명은 @로 시작해야 합니다.\n사용법: `/팀빌딩 @홍길동`"
@@ -534,9 +628,8 @@ def handle_team_info(text: str, team_service: TeamBuildingService):
         response_text += f"팀장: <@{result['creator_id']}> ({result['creator_name']})\n\n"
         
         response_text += "👥 *팀 구성 현황*\n"
-        for position, status in result["status"].items():
-            emoji = "✅" if status["filled"] else "❌"
-            response_text += f"{emoji} {position}: {status['current']}/{status['required']}명\n"
+        for position, count in result["position_counts"].items():
+            response_text += f"• {position}: {count}명\n"
         
         if result["members"]:
             response_text += "\n*팀 멤버*\n"
@@ -692,12 +785,19 @@ def handle_help_command():
     help_text += "• `/팀생성 팀명` - 새로운 팀을 생성합니다\n"
     help_text += "  예시: `/팀생성 해커톤팀1`\n\n"
     
+<<<<<<< HEAD
     help_text += "• `/팀빌딩 @유저명` - 팀원을 추가합니다 (팀장만 가능)\n"
     help_text += "  팀장의 팀에 팀원을 추가합니다. 포지션은 자동으로 결정됩니다.\n"
     help_text += "  가능한 포지션:\n"
     for position, count in TEAM_COMPOSITION.items():
         help_text += f"    - {position}: {count}명\n"
     help_text += "\n"
+=======
+    help_text += "• `/팀빌딩 팀명` - 팀빌딩 메시지를 생성합니다\n"
+    help_text += "  예시: `/팀빌딩 해커톤팀1`\n"
+    help_text += "  채널에 팀빌딩 메시지를 게시하고, 스레드 댓글로 팀에 합류할 수 있습니다.\n"
+    help_text += "  가능한 포지션: BE, FE, Designer, Planner\n\n"
+>>>>>>> b9235a4edbc661c000faf6b0570b0507bf647a80
     
     help_text += "• `/팀정보 팀명` - 팀의 상세 정보를 조회합니다\n"
     help_text += "  예시: `/팀정보 해커톤팀1`\n\n"
@@ -719,18 +819,13 @@ def handle_help_command():
     help_text += "• `/자기소개` - 자기소개 템플릿을 생성합니다\n"
     help_text += "  DB에 등록된 정보를 기반으로 템플릿을 제공합니다\n\n"
     
-    help_text += "📊 *팀 구성 규칙*\n"
-    help_text += "• BE 개발자: 2명\n"
-    help_text += "• FE 개발자: 1명\n"
-    help_text += "• 디자이너: 1명\n"
-    help_text += "• 기획자: 1명\n"
-    help_text += "• *총 5명*으로 구성\n\n"
+    help_text += "📊 *팀 구성*\n"
+    help_text += "• 팀장 1명 + 팀원들로 구성\n"
+    help_text += "• 가능한 포지션: BE, FE, Designer, Planner\n"
     
     help_text += "💡 *사용 팁*\n"
     help_text += "• 팀명은 중복될 수 없습니다\n"
     help_text += "• 한 명은 하나의 팀에만 속할 수 있습니다\n"
-    help_text += "• 포지션별로 정해진 인원만 추가할 수 있습니다\n"
-    help_text += "• 팀이 완성되면 ✅ 표시가 나타납니다\n\n"
     
     help_text += "🔧 *문제 해결*\n"
     help_text += "• 명령어가 작동하지 않으면 봇을 채널에 초대해주세요\n"
