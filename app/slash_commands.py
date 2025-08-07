@@ -162,34 +162,7 @@ def get_slack_user_id_by_name(user_name: str) -> str:
         logger.error(f"Error getting user ID by name {user_name}: {e}")
         return None
 
-def get_slack_user_display_name(user_id: str) -> str:
-    """Slack API를 통해 User ID로 실제 표시 이름을 가져옵니다"""
-    if not SLACK_BOT_TOKEN:
-        logger.warning("SLACK_BOT_TOKEN not found, cannot get user display name")
-        return None
 
-    try:
-        response = requests.get(
-            "https://slack.com/api/users.info",
-            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-            params={"user": user_id}
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ok"):
-                user = data.get("user", {})
-                # real_name을 우선적으로 사용, 없으면 display_name 사용
-                display_name = user.get("real_name") or user.get("display_name") or user.get("name")
-                logger.info(f"Found display name for {user_id}: {display_name}")
-                return display_name
-
-        logger.warning(f"Failed to find display name for user ID: {user_id}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Error getting display name for user ID {user_id}: {e}")
-        return None
 
 def parse_slack_mention(text: str) -> tuple:
     """Slack 멘션 형식을 파싱하여 user_id와 user_name을 반환합니다"""
@@ -208,9 +181,7 @@ def resolve_user_id(target_user_name: str, target_user_id: str = None) -> tuple:
     if target_user_id:
         # 이미 user_id가 제공된 경우
         slack_user_id = target_user_id
-        display_name = get_slack_user_display_name(slack_user_id)
-        if not display_name:
-            display_name = target_user_name or slack_user_id
+        display_name = target_user_name or slack_user_id
         return slack_user_id, display_name
     else:
         # 이름으로 Slack User ID 찾기
@@ -218,10 +189,8 @@ def resolve_user_id(target_user_name: str, target_user_id: str = None) -> tuple:
         if not slack_user_id:
             return None, None
         
-        # Slack User ID로 실제 한글 닉네임 가져오기
-        display_name = get_slack_user_display_name(slack_user_id)
-        if not display_name:
-            display_name = target_user_name or slack_user_id
+        # user_name을 그대로 사용
+        display_name = target_user_name or slack_user_id
         
         return slack_user_id, display_name
 
@@ -319,12 +288,8 @@ def handle_create_team(text: str, user_id: str, user_name: str, team_service: Te
             "text": "사용법: `/팀생성 팀명`\n예시: `/팀생성 해커톤팀1`"
         }
     
-    # 팀장의 display_name 가져오기
-    creator_display_name = get_slack_user_display_name(user_id)
-    if creator_display_name:
-        creator_name = creator_display_name
-    else:
-        creator_name = user_name
+    # user_id를 직접 사용하고, user_name을 creator_name으로 사용
+    creator_name = user_name
     
     result = team_service.create_team(text, user_id, creator_name)
     
@@ -378,13 +343,6 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
             "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
         }
     
-    # 사용자 정보 업데이트 (Slack ID 연결)
-    from .user_service import UserService
-    user_service = UserService(team_service.db)
-    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
-    if update_result["success"]:
-        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
-    
     # 팀원 추가 (포지션은 자동으로 결정)
     result = team_service.add_member_to_team(team.name, slack_user_id, display_name)
     
@@ -428,11 +386,6 @@ def handle_user_info(text: str, user_service: UserService):
             "response_type": "ephemeral",
             "text": f"❌ 사용자 '{user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
         }
-    
-    # 사용자 정보 업데이트 (Slack ID 연결)
-    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
-    if update_result["success"]:
-        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
     
     # Slack User ID로 정보 조회
     result = user_service.get_user_info(slack_user_id)
@@ -768,14 +721,9 @@ def handle_self_introduction(user_id: str, user_name: str, user_service: UserSer
     result = user_service.get_user_info(user_id)
     
     if not result["success"]:
-        # user_id로 찾지 못했으면 display_name으로 검색
-        display_name = get_slack_user_display_name(user_id)
-        if display_name:
-            logger.info(f"Found display name: {display_name} for user_id: {user_id}")
-            search_name = display_name
-        else:
-            logger.warning(f"Could not get display name for {user_id}, using user_name: {user_name}")
-            search_name = user_name
+        # user_id로 찾지 못했으면 user_name 사용
+        logger.warning(f"Could not find user by user_id: {user_id}, using user_name: {user_name}")
+        search_name = user_name
         
         # 모든 사용자를 가져와서 display_name으로 검색
         all_users_result = user_service.get_all_users()

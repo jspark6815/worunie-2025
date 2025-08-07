@@ -19,31 +19,7 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 app = FastAPI(title="DB Viewer")
 templates = Jinja2Templates(directory="templates")
 
-def get_slack_user_display_name(user_id: str) -> str:
-    """Slack API를 통해 User ID로 실제 표시 이름을 가져옵니다"""
-    if not SLACK_BOT_TOKEN:
-        return None
 
-    try:
-        response = requests.get(
-            "https://slack.com/api/users.info",
-            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-            params={"user": user_id}
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ok"):
-                user = data.get("user", {})
-                # real_name을 우선적으로 사용, 없으면 display_name 사용
-                display_name = user.get("real_name") or user.get("display_name") or user.get("name")
-                return display_name
-
-        return None
-
-    except Exception as e:
-        print(f"Error getting display name for user ID {user_id}: {e}")
-        return None
 
 def get_slack_user_id_by_name(username: str) -> str:
     """Slack API를 통해 username으로 User ID를 가져옵니다"""
@@ -76,14 +52,12 @@ def get_member_display_name(user_name: str) -> tuple:
     if user_name.startswith('U'):
         # 이미 User ID인 경우
         user_id = user_name
-        display_name = get_slack_user_display_name(user_id)
-        return user_id, display_name
+        return user_id, user_name
     else:
         # username인 경우 User ID로 변환
         user_id = get_slack_user_id_by_name(user_name)
         if user_id:
-            display_name = get_slack_user_display_name(user_id)
-            return user_id, display_name
+            return user_id, user_name
         else:
             # User ID를 찾을 수 없는 경우
             return user_name, None
@@ -114,15 +88,10 @@ async def view_users(request: Request):
     
     users = cursor.fetchall()
     
-    # Slack API를 통해 실제 표시 이름 가져오기
+    # 사용자 정보를 dict로 변환
     for user in users:
-        display_name = get_slack_user_display_name(user['user_id'])
-        if display_name and display_name != user['name']:
-            user = dict(user)
-            user['display_name'] = display_name
-        else:
-            user = dict(user)
-            user['display_name'] = None
+        user = dict(user)
+        user['display_name'] = None
     
     conn.close()
     
@@ -338,13 +307,9 @@ async def view_teams(request: Request):
     
     # 각 팀의 멤버 정보 가져오기
     for team in teams:
-        # 팀장의 display_name 가져오기
-        creator_display_name = get_slack_user_display_name(team['creator_id'])
+        # 팀 정보를 dict로 변환
         team = dict(team)
-        if creator_display_name and creator_display_name != team['creator_name']:
-            team['creator_display_name'] = creator_display_name
-        else:
-            team['creator_display_name'] = None
+        team['creator_display_name'] = None
         
         cursor.execute("""
             SELECT user_name, position, joined_at
@@ -552,15 +517,10 @@ async def search_results(request: Request,
         
         users = cursor.fetchall()
         
-        # Slack API를 통해 실제 표시 이름 가져오기
+        # 사용자 정보를 dict로 변환
         for user in users:
-            display_name = get_slack_user_display_name(user['user_id'])
-            if display_name and display_name != user['name']:
-                user = dict(user)
-                user['display_name'] = display_name
-            else:
-                user = dict(user)
-                user['display_name'] = None
+            user = dict(user)
+            user['display_name'] = None
     
     if search_type == "teams" or search_type == "all":
         # 팀 검색
@@ -578,13 +538,9 @@ async def search_results(request: Request,
         
         # 각 팀의 멤버 정보 가져오기
         for team in teams:
-            # 팀장의 display_name 가져오기
-            creator_display_name = get_slack_user_display_name(team['creator_id'])
+            # 팀 정보를 dict로 변환
             team = dict(team)
-            if creator_display_name and creator_display_name != team['creator_name']:
-                team['creator_display_name'] = creator_display_name
-            else:
-                team['creator_display_name'] = None
+            team['creator_display_name'] = None
             
             cursor.execute("""
                 SELECT user_name, position, joined_at
