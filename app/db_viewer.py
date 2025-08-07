@@ -58,14 +58,26 @@ async def add_user_form(request: Request):
     })
 
 @app.post("/users/add", response_class=HTMLResponse)
-async def add_user(request: Request, 
-                   name: str = Form(...),
-                   user_id: str = Form(...),
-                   school_major: str = Form(...),
-                   position: str = Form(...),
-                   insurance: str = Form(...),
-                   email: str = Form(...)):
+async def add_user(request: Request):
     """사용자 등록"""
+    # 폼 데이터를 직접 파싱
+    form_data = await request.form()
+    
+    # 디버깅을 위한 로그
+    print(f"DEBUG: Form data received: {dict(form_data)}")
+    
+    # 필수 필드 추출
+    name = form_data.get("name", "")
+    user_id = form_data.get("user_id", "")
+    school_major = form_data.get("school_major", "")
+    position = form_data.get("position", "")
+    insurance = form_data.get("insurance", "")
+    email = form_data.get("email", "")
+    
+    # 필수 필드 검증
+    if not name:
+        raise HTTPException(status_code=400, detail="이름은 필수 입력 항목입니다")
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -85,6 +97,7 @@ async def add_user(request: Request,
     except Exception as e:
         conn.rollback()
         conn.close()
+        print(f"DEBUG: Error in add_user - {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/users/edit/{user_id}", response_class=HTMLResponse)
