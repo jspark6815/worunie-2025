@@ -115,7 +115,7 @@ class TeamBuildingService:
             if not team:
                 return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
             
-            # 사용자의 DB 포지션 가져오기
+            # 사용자의 DB 포지션 가져오기 (Slack User ID 기준)
             from .user_service import UserService
             user_service = UserService(self.db)
             user_result = user_service.get_user_info(user_id)
@@ -141,7 +141,7 @@ class TeamBuildingService:
             if not position:
                 return {"success": False, "message": f"<@{user_id}>님의 포지션 '{db_position}'은 팀 구성 규칙에 맞지 않습니다.\n가능한 포지션: 백엔드, 프론트엔드, 디자인, 기획"}
             
-            # 사용자가 이미 팀에 속해있는지 확인
+            # 사용자가 이미 팀에 속해있는지 확인 (Slack User ID 기준)
             existing_member = self.db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
             if existing_member:
                 existing_team = self.db.query(Team).filter(Team.id == existing_member.team_id).first()
@@ -186,7 +186,7 @@ class TeamBuildingService:
             if team.creator_id != user_id and not is_staff:
                 return {"success": False, "message": f"팀원을 삭제할 권한이 없습니다. 팀장 또는 관리자만 삭제할 수 있습니다."}
             
-            # 삭제할 멤버 찾기
+            # 삭제할 멤버 찾기 (Slack User ID 기준)
             member = self.db.query(TeamMember).filter(
                 TeamMember.team_id == team.id,
                 TeamMember.user_id == target_user_id
@@ -309,4 +309,30 @@ class TeamBuildingService:
             
         except Exception as e:
             logger.error(f"Error getting all teams: {e}")
-            return {"success": False, "message": "팀 목록 조회 중 오류가 발생했습니다."} 
+            return {"success": False, "message": "팀 목록 조회 중 오류가 발생했습니다."}
+    
+    def get_user_team(self, user_id: str) -> dict:
+        """사용자가 속한 팀 조회 (Slack User ID 기준)"""
+        try:
+            member = self.db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
+            if not member:
+                return {"success": False, "message": f"<@{user_id}>님은 어떤 팀에도 속해있지 않습니다."}
+            
+            team = self.db.query(Team).filter(Team.id == member.team_id, Team.is_active == True).first()
+            if not team:
+                return {"success": False, "message": "팀 정보를 찾을 수 없습니다."}
+            
+            return {
+                "success": True,
+                "team": {
+                    "name": team.name,
+                    "creator_id": team.creator_id,
+                    "creator_name": team.creator_name,
+                    "position": member.position,
+                    "joined_at": member.joined_at.strftime("%Y-%m-%d %H:%M")
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user team: {e}")
+            return {"success": False, "message": "사용자 팀 정보 조회 중 오류가 발생했습니다."} 

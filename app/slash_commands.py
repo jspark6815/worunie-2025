@@ -191,6 +191,40 @@ def get_slack_user_display_name(user_id: str) -> str:
         logger.error(f"Error getting display name for user ID {user_id}: {e}")
         return None
 
+def parse_slack_mention(text: str) -> tuple:
+    """Slack 멘션 형식을 파싱하여 user_id와 user_name을 반환합니다"""
+    if text.startswith('<@') and '|' in text and text.endswith('>'):
+        # 형식: <@U1234567890|username>
+        parts = text[2:-1].split('|')
+        if len(parts) == 2:
+            return parts[0], parts[1]  # user_id, user_name
+    elif text.startswith('@'):
+        # 형식: @username
+        return None, text[1:]  # None, user_name
+    return None, None
+
+def resolve_user_id(target_user_name: str, target_user_id: str = None) -> tuple:
+    """사용자 이름이나 ID를 통해 Slack User ID를 해결합니다"""
+    if target_user_id:
+        # 이미 user_id가 제공된 경우
+        slack_user_id = target_user_id
+        display_name = get_slack_user_display_name(slack_user_id)
+        if not display_name:
+            display_name = target_user_name or slack_user_id
+        return slack_user_id, display_name
+    else:
+        # 이름으로 Slack User ID 찾기
+        slack_user_id = get_slack_user_id_by_name(target_user_name)
+        if not slack_user_id:
+            return None, None
+        
+        # Slack User ID로 실제 한글 닉네임 가져오기
+        display_name = get_slack_user_display_name(slack_user_id)
+        if not display_name:
+            display_name = target_user_name or slack_user_id
+        
+        return slack_user_id, display_name
+
 @router.post("/commands")
 async def handle_slash_commands(
     request: Request,
@@ -309,9 +343,6 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     """팀원 추가 처리 - 팀장의 팀에 팀원 추가"""
     logger.info(f"=== handle_add_member called ===")
     logger.info(f"text parameter: '{text}'")
-    logger.info(f"text type: {type(text)}")
-    logger.info(f"text length: {len(text) if text else 0}")
-    logger.info(f"text starts with @: {text.startswith('@') if text else False}")
     
     if not text:
         help_text = "사용법: `/팀빌딩 @유저명`\n"
@@ -321,23 +352,10 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
             "text": help_text
         }
     
-    # Slack 멘션 형식 처리: <@U1234567890|username> 또는 @username
-    target_user_id = None
-    target_user_name = None
+    # Slack 멘션 형식 처리
+    target_user_id, target_user_name = parse_slack_mention(text)
     
-    if text.startswith('<@') and '|' in text and text.endswith('>'):
-        # 형식: <@U1234567890|username>
-        parts = text[2:-1].split('|')
-        if len(parts) == 2:
-            target_user_id = parts[0]
-            target_user_name = parts[1]
-            logger.info(f"Parsed Slack mention format: user_id={target_user_id}, user_name={target_user_name}")
-    elif text.startswith('@'):
-        # 형식: @username
-        target_user_name = text[1:]
-        logger.info(f"Parsed @ format: user_name={target_user_name}")
-    else:
-        logger.warning(f"Invalid format: '{text}'")
+    if not target_user_id and not target_user_name:
         return {
             "response_type": "ephemeral",
             "text": "유저명은 @로 시작하거나 Slack 멘션 형식이어야 합니다.\n사용법: `/팀빌딩 @홍길동` 또는 멘션으로 선택"
@@ -351,144 +369,29 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
             "text": f"❌ 팀장으로 생성한 팀이 없습니다.\n먼저 `/팀생성 팀명`으로 팀을 생성해주세요."
         }
     
-
+    # 사용자 ID 해결
+    slack_user_id, display_name = resolve_user_id(target_user_name, target_user_id)
     
-    logger.info(f"Parsed target_user_id: {target_user_id}, target_user_name: {target_user_name}")
-    
-    # target_user_id가 있으면 바로 사용, 없으면 이름으로 찾기
-    if target_user_id:
-        logger.info(f"Using provided target_user_id: {target_user_id}")
-        slack_user_id = target_user_id
-        
-        # Slack User ID로 실제 한글 닉네임 가져오기
-        display_name = get_slack_user_display_name(slack_user_id)
-        if display_name:
-            member_name = display_name
-            logger.info(f"Found display name from Slack API: {display_name}")
-        else:
-            member_name = target_user_name or slack_user_id
-            logger.warning(f"Could not get display name from Slack API, using: {member_name}")
-    else:
-        # 이름으로 Slack User ID 찾기
-        logger.info(f"Searching for Slack user ID by name: {target_user_name}")
-        slack_user_id = get_slack_user_id_by_name(target_user_name)
-        logger.info(f"Result from get_slack_user_id_by_name: {slack_user_id}")
-        
-        if not slack_user_id:
-            logger.warning(f"User not found in Slack workspace: {target_user_name}")
-            return {
-                "response_type": "ephemeral",
-                "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
-            }
-        
-        # Slack User ID로 실제 한글 닉네임 가져오기
-        display_name = get_slack_user_display_name(slack_user_id)
-        if display_name:
-            member_name = display_name
-        else:
-            member_name = target_user_name or slack_user_id
-    
-    # display_name을 기준으로 DB에서 사용자 찾기
-    from .user_service import UserService
-    user_service = UserService(team_service.db)
-    
-    # 먼저 display_name으로 사용자 검색
-    all_users_result = user_service.get_all_users()
-    found_user = None
-    
-    if all_users_result["success"]:
-        logger.info(f"Searching for user with name: '{display_name}' in {len(all_users_result['users'])} users")
-        for user in all_users_result["users"]:
-            logger.info(f"Checking user: '{user['name']}' against '{display_name}'")
-            if user['name'] == display_name:
-                found_user = user
-                logger.info(f"Found user by display_name: {display_name}")
-                break
-    
-    # 사용자를 찾지 못했으면 target_user_name으로도 검색
-    if not found_user and target_user_name:
-        logger.info(f"User not found by display_name, trying target_user_name: '{target_user_name}'")
-        for user in all_users_result["users"]:
-            if user['name'] == target_user_name:
-                found_user = user
-                logger.info(f"Found user by target_user_name: {target_user_name}")
-                break
-    
-    # 사용자를 찾지 못했으면 사용자 등록 안내
-    if not found_user:
+    if not slack_user_id:
         return {
             "response_type": "ephemeral",
-            "text": f"❌ 사용자 '{display_name}'이(가) 데이터베이스에 등록되어 있지 않습니다.\n"
-                    f"웹 DB 뷰어(http://43.200.253.84:8081)에서 사용자 정보를 등록해주세요.\n"
-                    f"등록된 이름: {display_name}"
+            "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
         }
     
     # 사용자 정보 업데이트 (Slack ID 연결)
+    from .user_service import UserService
+    user_service = UserService(team_service.db)
     update_result = user_service.update_user_slack_id(display_name, slack_user_id)
     if update_result["success"]:
         logger.info(f"User ID updated for {display_name}: {update_result['message']}")
     
     # 팀원 추가 (포지션은 자동으로 결정)
-    result = team_service.add_member_to_team(team.name, slack_user_id, member_name)
+    result = team_service.add_member_to_team(team.name, slack_user_id, display_name)
     
     if result["success"]:
         return {
             "response_type": "ephemeral",
-            "text": f"✅ {result['message']}\n추가된 멤버: <@{slack_user_id}> ({member_name})"
-        }
-    else:
-        return {
-            "response_type": "ephemeral",
-            "text": f"❌ {result['message']}"
-        }
-    
-    # display_name을 기준으로 DB에서 사용자 찾기
-    from .user_service import UserService
-    user_service = UserService(team_service.db)
-    
-    # 먼저 display_name으로 사용자 검색
-    all_users_result = user_service.get_all_users()
-    found_user = None
-    
-    if all_users_result["success"]:
-        logger.info(f"Searching for user with name: '{display_name}' in {len(all_users_result['users'])} users")
-        for user in all_users_result["users"]:
-            logger.info(f"Checking user: '{user['name']}' against '{display_name}'")
-            if user['name'] == display_name:
-                found_user = user
-                logger.info(f"Found user by display_name: {display_name}")
-                break
-    
-    # 사용자를 찾지 못했으면 target_user_name으로도 검색
-    if not found_user and target_user_name:
-        logger.info(f"User not found by display_name, trying target_user_name: '{target_user_name}'")
-        for user in all_users_result["users"]:
-            if user['name'] == target_user_name:
-                found_user = user
-                logger.info(f"Found user by target_user_name: {target_user_name}")
-                break
-    
-    # 사용자를 찾지 못했으면 사용자 등록 안내
-    if not found_user:
-        return {
-            "response_type": "ephemeral",
-            "text": f"❌ 사용자 '{display_name}'이(가) 데이터베이스에 등록되어 있지 않습니다.\n"
-                    f"웹 DB 뷰어(http://43.200.253.84:8081)에서 사용자 정보를 등록해주세요.\n"
-                    f"등록된 이름: {display_name}"
-        }
-    
-    # 사용자 정보 업데이트 (Slack ID 연결)
-    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
-    if update_result["success"]:
-        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
-    
-    # 팀원 추가 (포지션은 자동으로 결정)
-    result = team_service.add_member_to_team(team.name, slack_user_id, member_name)
-    
-    if result["success"]:
-        return {
-            "response_type": "ephemeral",
-            "text": f"✅ {result['message']}\n추가된 멤버: <@{slack_user_id}> ({member_name})"
+            "text": f"✅ {result['message']}\n추가된 멤버: <@{slack_user_id}> ({display_name})"
         }
     else:
         return {
@@ -500,8 +403,6 @@ def handle_user_info(text: str, user_service: UserService):
     """사용자 정보 조회 처리"""
     logger.info(f"=== handle_user_info called ===")
     logger.info(f"text parameter: '{text}'")
-    logger.info(f"text type: {type(text)}")
-    logger.info(f"text length: {len(text) if text else 0}")
     
     if not text:
         logger.warning("No text provided")
@@ -510,102 +411,30 @@ def handle_user_info(text: str, user_service: UserService):
             "text": "사용법: `/사용자정보 @유저명`\n예시: `/사용자정보 @홍길동`"
         }
     
-    # Slack 멘션 형식 처리: <@U1234567890|username> 또는 @username
-    user_id = None
-    user_name = None
+    # Slack 멘션 형식 처리
+    user_id, user_name = parse_slack_mention(text)
     
-    if text.startswith('<@') and '|' in text and text.endswith('>'):
-        # 형식: <@U1234567890|username>
-        parts = text[2:-1].split('|')  # <@ 제거하고 > 제거한 후 |로 분할
-        if len(parts) == 2:
-            user_id = parts[0]
-            user_name = parts[1]
-            logger.info(f"Parsed mention format: user_id={user_id}, user_name={user_name}")
-    elif text.startswith('@'):
-        # 형식: @username
-        user_name = text[1:]  # @ 제거
-        logger.info(f"Parsed @ format: user_name={user_name}")
-    else:
-        logger.warning(f"Invalid format: '{text}'")
+    if not user_id and not user_name:
         return {
             "response_type": "ephemeral",
             "text": "유저명은 @로 시작해야 합니다.\n예시: `/사용자정보 @홍길동`"
         }
     
-    # user_id가 있으면 바로 사용, 없으면 이름으로 찾기
-    if user_id:
-        # user_id가 있으면 바로 사용
-        slack_user_id = user_id
-        logger.info(f"Using provided user_id: {slack_user_id}")
-        
-        # Slack User ID로 실제 한글 닉네임 가져오기
-        display_name = get_slack_user_display_name(slack_user_id)
-        if display_name:
-            logger.info(f"Found display name: {display_name} for user_id: {slack_user_id}")
-            # 실제 한글 닉네임으로 검색
-            search_name = display_name
-        else:
-            logger.warning(f"Could not get display name for {slack_user_id}, using original user_name: {user_name}")
-            search_name = user_name
-    else:
-        # 이름으로 Slack User ID 찾기
-        slack_user_id = get_slack_user_id_by_name(user_name)
-        logger.info(f"Found slack_user_id by name: {slack_user_id}")
-        
-        if not slack_user_id:
-            return {
-                "response_type": "ephemeral",
-                "text": f"❌ 사용자 '{user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
-            }
-        
-        # Slack User ID로 실제 한글 닉네임 가져오기
-        display_name = get_slack_user_display_name(slack_user_id)
-        if display_name:
-            logger.info(f"Found display name: {display_name} for user_id: {slack_user_id}")
-            search_name = display_name
-        else:
-            logger.warning(f"Could not get display name for {slack_user_id}, using original user_name: {user_name}")
-            search_name = user_name
+    # 사용자 ID 해결
+    slack_user_id, display_name = resolve_user_id(user_name, user_id)
     
-    # 먼저 user_id로 검색
-    result = user_service.get_user_info(slack_user_id)
+    if not slack_user_id:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 사용자 '{user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
+        }
     
-    if not result["success"]:
-        # user_id로 찾지 못했으면 한글 닉네임으로 검색
-        logger.info(f"User not found by user_id, trying to find by name: {search_name}")
-        
-        # 모든 사용자를 가져와서 한글 닉네임으로 검색
-        all_users_result = user_service.get_all_users()
-        logger.info(f"get_all_users result: {all_users_result}")
-        
-        if all_users_result["success"]:
-            logger.info(f"Found {len(all_users_result['users'])} users in database")
-            for user in all_users_result["users"]:
-                logger.info(f"Checking user: {user['name']} against search name: {search_name}")
-                if user['name'] == search_name:
-                    logger.info(f"Found user by name: {search_name}")
-                    # 찾은 사용자의 정보로 결과 생성
-                    user_info = user
-                    response_text = f"*{user_info['name']}* 사용자 정보\n"
-                    response_text += f"학교/전공: {user_info['school_major'] or '미입력'}\n"
-                    response_text += f"포지션: {user_info['position'] or '미입력'}\n"
-                    response_text += f"4대보험: {user_info['insurance'] or '미입력'}\n"
-                    response_text += f"이메일: {user_info['email'] or '미입력'}\n"
-                    
-                    return {
-                        "response_type": "ephemeral",
-                        "text": response_text
-                    }
-            logger.info(f"No user found with name: {search_name}")
-        else:
-            logger.error(f"Failed to get all users: {all_users_result['message']}")
-    
-    # 먼저 이름으로 검색해서 user_id 업데이트
-    update_result = user_service.update_user_slack_id(search_name, slack_user_id)
+    # 사용자 정보 업데이트 (Slack ID 연결)
+    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
     if update_result["success"]:
-        logger.info(f"User ID updated for {search_name}: {update_result['message']}")
+        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
     
-    # 업데이트된 user_id로 정보 조회
+    # Slack User ID로 정보 조회
     result = user_service.get_user_info(slack_user_id)
     
     if result["success"]:
@@ -731,51 +560,6 @@ def handle_user_list(user_service: UserService):
             "text": f"❌ {result['message']}"
         }
 
-
-    
-    # 텍스트 파싱: "BE @홍길동" -> position="BE", target_user="@홍길동"
-    parts = text.split()
-    if len(parts) != 2:
-        return {
-            "response_type": "ephemeral",
-            "text": "사용법: `/팀빌딩 포지션 @유저명`\n예시: `/팀빌딩 BE @홍길동`"
-        }
-    
-    position, target_user = parts
-    
-    # @제거하고 user_id 추출
-    if not target_user.startswith('@'):
-        return {
-            "response_type": "ephemeral",
-            "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀빌딩 BE @홍길동`"
-        }
-    
-    # 실제 구현에서는 Slack API를 통해 user_id를 가져와야 합니다
-    # 여기서는 간단히 target_user를 그대로 사용
-    target_user_id = target_user[1:]  # @ 제거
-    
-    # 팀명을 어떻게 결정할지 - 임시로 첫 번째 팀 사용
-    teams_result = team_service.get_all_teams()
-    if not teams_result["success"] or not teams_result["teams"]:
-        return {
-            "response_type": "ephemeral",
-            "text": "먼저 팀을 생성해주세요. `/팀생성 팀명`"
-        }
-    
-    team_name = teams_result["teams"][0]["name"]
-    result = team_service.add_member_to_team(team_name, position, target_user_id, target_user)
-    
-    if result["success"]:
-        return {
-            "response_type": "ephemeral",
-            "text": f"✅ {result['message']}"
-        }
-    else:
-        return {
-            "response_type": "ephemeral",
-            "text": f"❌ {result['message']}"
-        }
-
 def handle_team_info(text: str, team_service: TeamBuildingService):
     """팀 정보 조회 처리"""
     if not text:
@@ -886,43 +670,23 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
             "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
         }
     
-    # Slack 멘션 형식 처리: <@U1234567890|username> 또는 @username
-    target_user_id = None
-    target_user_name = None
+    # Slack 멘션 형식 처리
+    target_user_id, target_user_name = parse_slack_mention(target_user)
     
-    if target_user.startswith('<@') and '|' in target_user and target_user.endswith('>'):
-        # 형식: <@U1234567890|username>
-        parts = target_user[2:-1].split('|')
-        if len(parts) == 2:
-            target_user_id = parts[0]
-            target_user_name = parts[1]
-    elif target_user.startswith('@'):
-        # 형식: @username
-        target_user_name = target_user[1:]
-    else:
+    if not target_user_id and not target_user_name:
         return {
             "response_type": "ephemeral",
             "text": "유저명은 @로 시작해야 합니다.\n예시: `/팀원삭제 해커톤팀1 @홍길동`"
         }
     
-    # target_user_id가 있으면 바로 사용, 없으면 이름으로 찾기
-    if target_user_id:
-        slack_user_id = target_user_id
-    else:
-        # 이름으로 Slack User ID 찾기
-        slack_user_id = get_slack_user_id_by_name(target_user_name)
-        if not slack_user_id:
-            return {
-                "response_type": "ephemeral",
-                "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
-            }
+    # 사용자 ID 해결
+    slack_user_id, display_name = resolve_user_id(target_user_name, target_user_id)
     
-    # Slack User ID로 실제 한글 닉네임 가져오기
-    display_name = get_slack_user_display_name(slack_user_id)
-    if display_name:
-        member_name = display_name
-    else:
-        member_name = target_user_name or slack_user_id
+    if not slack_user_id:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 사용자 '{target_user_name}'을(를) 찾을 수 없습니다.\nSlack 워크스페이스에 존재하는 사용자인지 확인해주세요."
+        }
     
     # 사용자 권한 확인
     user_info = get_user_info(user_id)
@@ -933,7 +697,7 @@ def handle_remove_member(text: str, user_id: str, user_name: str, team_service: 
     if result["success"]:
         return {
             "response_type": "ephemeral",
-            "text": f"✅ {result['message']}\n삭제된 멤버: <@{slack_user_id}> ({member_name})"
+            "text": f"✅ {result['message']}\n삭제된 멤버: <@{slack_user_id}> ({display_name})"
         }
     else:
         return {
@@ -1000,11 +764,11 @@ def handle_self_introduction(user_id: str, user_name: str, user_service: UserSer
     logger.info(f"=== handle_self_introduction called ===")
     logger.info(f"user_id: {user_id}, user_name: {user_name}")
     
-    # 사용자 정보 조회
+    # 사용자 정보 조회 (Slack ID 기준)
     result = user_service.get_user_info(user_id)
     
     if not result["success"]:
-        # user_id로 찾지 못했으면 한글 닉네임으로 검색
+        # user_id로 찾지 못했으면 display_name으로 검색
         display_name = get_slack_user_display_name(user_id)
         if display_name:
             logger.info(f"Found display name: {display_name} for user_id: {user_id}")
@@ -1013,7 +777,7 @@ def handle_self_introduction(user_id: str, user_name: str, user_service: UserSer
             logger.warning(f"Could not get display name for {user_id}, using user_name: {user_name}")
             search_name = user_name
         
-        # 모든 사용자를 가져와서 한글 닉네임으로 검색
+        # 모든 사용자를 가져와서 display_name으로 검색
         all_users_result = user_service.get_all_users()
         if all_users_result["success"]:
             for user in all_users_result["users"]:

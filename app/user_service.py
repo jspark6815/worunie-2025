@@ -36,7 +36,7 @@ class UserService:
             return {"success": False, "message": "사용자 ID 업데이트 중 오류가 발생했습니다."}
     
     def get_user_info(self, user_id: str) -> dict:
-        """사용자 정보 조회"""
+        """Slack User ID로 사용자 정보 조회"""
         try:
             user = self.db.query(User).filter(User.user_id == user_id, User.is_active == True).first()
             if not user:
@@ -57,6 +57,30 @@ class UserService:
             
         except Exception as e:
             logger.error(f"Error getting user info: {e}")
+            return {"success": False, "message": "사용자 정보 조회 중 오류가 발생했습니다."}
+    
+    def get_user_by_name(self, name: str) -> dict:
+        """사용자 이름으로 사용자 정보 조회 (Slack ID 기준)"""
+        try:
+            user = self.db.query(User).filter(User.name == name, User.is_active == True).first()
+            if not user:
+                return {"success": False, "message": f"사용자 '{name}'를 찾을 수 없습니다."}
+            
+            return {
+                "success": True,
+                "user": {
+                    "user_id": user.user_id,
+                    "name": user.name,
+                    "school_major": user.school_major,
+                    "position": user.position,
+                    "insurance": user.insurance,
+                    "email": user.email,
+                    "created_at": user.created_at.strftime("%Y-%m-%d %H:%M")
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user by name: {e}")
             return {"success": False, "message": "사용자 정보 조회 중 오류가 발생했습니다."}
     
     def get_all_users(self) -> dict:
@@ -81,5 +105,87 @@ class UserService:
         except Exception as e:
             logger.error(f"Error getting all users: {e}")
             return {"success": False, "message": "사용자 목록 조회 중 오류가 발생했습니다."}
+    
+    def create_user(self, name: str, slack_user_id: str, school_major: str = None, 
+                   position: str = None, insurance: str = None, email: str = None) -> dict:
+        """새로운 사용자 생성"""
+        try:
+            # 중복 확인 (Slack User ID 기준)
+            existing_user = self.db.query(User).filter(User.user_id == slack_user_id, User.is_active == True).first()
+            if existing_user:
+                return {"success": False, "message": f"Slack User ID '{slack_user_id}'로 등록된 사용자가 이미 존재합니다."}
+            
+            # 이름 중복 확인
+            existing_name = self.db.query(User).filter(User.name == name, User.is_active == True).first()
+            if existing_name:
+                return {"success": False, "message": f"이름 '{name}'으로 등록된 사용자가 이미 존재합니다."}
+            
+            new_user = User(
+                user_id=slack_user_id,
+                name=name,
+                school_major=school_major,
+                position=position,
+                insurance=insurance,
+                email=email
+            )
+            
+            self.db.add(new_user)
+            self.db.commit()
+            self.db.refresh(new_user)
+            
+            logger.info(f"User '{name}' created with Slack ID: {slack_user_id}")
+            return {"success": True, "message": f"사용자 '{name}'이(가) 생성되었습니다."}
+            
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            self.db.rollback()
+            return {"success": False, "message": "사용자 생성 중 오류가 발생했습니다."}
+    
+    def update_user(self, slack_user_id: str, **kwargs) -> dict:
+        """사용자 정보 업데이트 (Slack User ID 기준)"""
+        try:
+            user = self.db.query(User).filter(User.user_id == slack_user_id, User.is_active == True).first()
+            if not user:
+                return {"success": False, "message": f"Slack User ID '{slack_user_id}'를 찾을 수 없습니다."}
+            
+            # 업데이트할 필드들
+            if 'name' in kwargs:
+                user.name = kwargs['name']
+            if 'school_major' in kwargs:
+                user.school_major = kwargs['school_major']
+            if 'position' in kwargs:
+                user.position = kwargs['position']
+            if 'insurance' in kwargs:
+                user.insurance = kwargs['insurance']
+            if 'email' in kwargs:
+                user.email = kwargs['email']
+            
+            self.db.commit()
+            
+            logger.info(f"User '{user.name}' updated")
+            return {"success": True, "message": f"사용자 '{user.name}'의 정보가 업데이트되었습니다."}
+            
+        except Exception as e:
+            logger.error(f"Error updating user: {e}")
+            self.db.rollback()
+            return {"success": False, "message": "사용자 정보 업데이트 중 오류가 발생했습니다."}
+    
+    def delete_user(self, slack_user_id: str) -> dict:
+        """사용자 삭제 (실제 삭제 대신 비활성화)"""
+        try:
+            user = self.db.query(User).filter(User.user_id == slack_user_id, User.is_active == True).first()
+            if not user:
+                return {"success": False, "message": f"Slack User ID '{slack_user_id}'를 찾을 수 없습니다."}
+            
+            user.is_active = False
+            self.db.commit()
+            
+            logger.info(f"User '{user.name}' deactivated")
+            return {"success": True, "message": f"사용자 '{user.name}'이(가) 삭제되었습니다."}
+            
+        except Exception as e:
+            logger.error(f"Error deleting user: {e}")
+            self.db.rollback()
+            return {"success": False, "message": "사용자 삭제 중 오류가 발생했습니다."}
     
  
