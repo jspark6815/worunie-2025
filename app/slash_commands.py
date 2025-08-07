@@ -307,27 +307,18 @@ def handle_create_team(text: str, user_id: str, user_name: str, team_service: Te
 
 def handle_add_member(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
     """팀원 추가 처리 - 팀장의 팀에 팀원 추가"""
+    logger.info(f"=== handle_add_member called ===")
+    logger.info(f"text parameter: '{text}'")
+    logger.info(f"text type: {type(text)}")
+    logger.info(f"text length: {len(text) if text else 0}")
+    logger.info(f"text starts with @: {text.startswith('@') if text else False}")
+    
     if not text:
         help_text = "사용법: `/팀빌딩 @유저명`\n"
         help_text += "팀장만 사용 가능합니다. 팀원을 추가합니다."
         return {
             "response_type": "ephemeral",
             "text": help_text
-        }
-    
-    # @로 시작하는지 확인
-    if not text.startswith('@'):
-        return {
-            "response_type": "ephemeral",
-            "text": "유저명은 @로 시작해야 합니다.\n사용법: `/팀빌딩 @홍길동`"
-        }
-    
-    # 팀장의 팀 찾기
-    team = team_service.db.query(Team).filter(Team.creator_id == user_id, Team.is_active == True).first()
-    if not team:
-        return {
-            "response_type": "ephemeral",
-            "text": f"❌ 팀장으로 생성한 팀이 없습니다.\n먼저 `/팀생성 팀명`으로 팀을 생성해주세요."
         }
     
     # Slack 멘션 형식 처리: <@U1234567890|username> 또는 @username
@@ -340,14 +331,27 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
         if len(parts) == 2:
             target_user_id = parts[0]
             target_user_name = parts[1]
+            logger.info(f"Parsed Slack mention format: user_id={target_user_id}, user_name={target_user_name}")
     elif text.startswith('@'):
         # 형식: @username
         target_user_name = text[1:]
+        logger.info(f"Parsed @ format: user_name={target_user_name}")
     else:
+        logger.warning(f"Invalid format: '{text}'")
         return {
             "response_type": "ephemeral",
-            "text": "유저명은 @로 시작해야 합니다.\n사용법: `/팀빌딩 @홍길동`"
+            "text": "유저명은 @로 시작하거나 Slack 멘션 형식이어야 합니다.\n사용법: `/팀빌딩 @홍길동` 또는 멘션으로 선택"
         }
+    
+    # 팀장의 팀 찾기
+    team = team_service.db.query(Team).filter(Team.creator_id == user_id, Team.is_active == True).first()
+    if not team:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 팀장으로 생성한 팀이 없습니다.\n먼저 `/팀생성 팀명`으로 팀을 생성해주세요."
+        }
+    
+
     
     logger.info(f"Parsed target_user_id: {target_user_id}, target_user_name: {target_user_name}")
     
