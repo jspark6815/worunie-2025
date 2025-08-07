@@ -75,8 +75,8 @@ async def add_user(request: Request,
             user_id = f"temp_{datetime.now().timestamp()}"
         
         cursor.execute("""
-            INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
         """, (user_id, name, school_major, position, insurance, email, datetime.now()))
         
         conn.commit()
