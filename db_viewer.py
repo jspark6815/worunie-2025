@@ -60,7 +60,7 @@ def get_member_display_name(user_name: str) -> tuple:
             return user_id, user_name
         else:
             # User ID를 찾을 수 없는 경우
-            return user_name, None
+            return user_name, user_name
 
 def get_db_connection():
     """데이터베이스 연결"""
