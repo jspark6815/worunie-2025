@@ -107,9 +107,14 @@ class TeamBuildingService:
             logger.error(f"Error deleting team: {e}")
             return {"success": False, "message": "팀 삭제 중 오류가 발생했습니다."}
     
-    def add_member_to_team(self, user_id: str, user_name: str) -> dict:
+    def add_member_to_team(self, team_name: str, user_id: str, user_name: str) -> dict:
         """팀에 멤버 추가 (사용자의 DB 포지션 자동 사용)"""
         try:
+            # 팀 찾기
+            team = self.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
+            if not team:
+                return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
+            
             # 사용자의 DB 포지션 가져오기
             from .user_service import UserService
             user_service = UserService(self.db)
@@ -139,13 +144,8 @@ class TeamBuildingService:
             # 사용자가 이미 팀에 속해있는지 확인
             existing_member = self.db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
             if existing_member:
-                team_name = self.db.query(Team).filter(Team.id == existing_member.team_id).first().name
-                return {"success": False, "message": f"<@{user_id}>님은 이미 '{team_name}' 팀에 속해 있습니다."}
-            
-            # 활성화된 팀 찾기 (첫 번째 팀 사용)
-            team = self.db.query(Team).filter(Team.is_active == True).first()
-            if not team:
-                return {"success": False, "message": "활성화된 팀이 없습니다. 먼저 `/팀생성`으로 팀을 생성해주세요."}
+                existing_team = self.db.query(Team).filter(Team.id == existing_member.team_id).first()
+                return {"success": False, "message": f"<@{user_id}>님은 이미 '{existing_team.name}' 팀에 속해 있습니다."}
             
             # 해당 포지션에 이미 멤버가 있는지 확인
             existing_position_member = self.db.query(TeamMember).filter(
