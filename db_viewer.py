@@ -310,7 +310,7 @@ async def add_user(name: str = Form(...),
         cursor.execute("""
             INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at, is_active)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-        """, (user_id, name, school_major, position, insurance, email, datetime.now(), 1))
+        """, (user_id, name, school_major, position, insurance, email, datetime.now()))
         
         conn.commit()
         conn.close()
