@@ -441,6 +441,60 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
             "response_type": "ephemeral",
             "text": f"❌ {result['message']}"
         }
+    
+    # display_name을 기준으로 DB에서 사용자 찾기
+    from .user_service import UserService
+    user_service = UserService(team_service.db)
+    
+    # 먼저 display_name으로 사용자 검색
+    all_users_result = user_service.get_all_users()
+    found_user = None
+    
+    if all_users_result["success"]:
+        logger.info(f"Searching for user with name: '{display_name}' in {len(all_users_result['users'])} users")
+        for user in all_users_result["users"]:
+            logger.info(f"Checking user: '{user['name']}' against '{display_name}'")
+            if user['name'] == display_name:
+                found_user = user
+                logger.info(f"Found user by display_name: {display_name}")
+                break
+    
+    # 사용자를 찾지 못했으면 target_user_name으로도 검색
+    if not found_user and target_user_name:
+        logger.info(f"User not found by display_name, trying target_user_name: '{target_user_name}'")
+        for user in all_users_result["users"]:
+            if user['name'] == target_user_name:
+                found_user = user
+                logger.info(f"Found user by target_user_name: {target_user_name}")
+                break
+    
+    # 사용자를 찾지 못했으면 사용자 등록 안내
+    if not found_user:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ 사용자 '{display_name}'이(가) 데이터베이스에 등록되어 있지 않습니다.\n"
+                    f"웹 DB 뷰어(http://43.200.253.84:8081)에서 사용자 정보를 등록해주세요.\n"
+                    f"등록된 이름: {display_name}"
+        }
+    
+    # 사용자 정보 업데이트 (Slack ID 연결)
+    update_result = user_service.update_user_slack_id(display_name, slack_user_id)
+    if update_result["success"]:
+        logger.info(f"User ID updated for {display_name}: {update_result['message']}")
+    
+    # 팀원 추가 (포지션은 자동으로 결정)
+    result = team_service.add_member_to_team(team.name, slack_user_id, member_name)
+    
+    if result["success"]:
+        return {
+            "response_type": "ephemeral",
+            "text": f"✅ {result['message']}\n추가된 멤버: <@{slack_user_id}> ({member_name})"
+        }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
 
 def handle_user_info(text: str, user_service: UserService):
     """사용자 정보 조회 처리"""
