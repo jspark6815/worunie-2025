@@ -32,10 +32,10 @@ docker image prune -f || true
 
 # 새로운 이미지 빌드 및 컨테이너 시작
 echo "🔨 Building and starting Slack Bot..."
-docker-compose up -d --build
+docker-compose up -d --build --force-recreate
 
 echo "🔨 Building and starting DB Viewer..."
-docker-compose -f docker-compose.db_viewer.yml up -d --build
+docker-compose -f docker-compose.db_viewer.yml up -d --build --force-recreate
 
 # 배포 상태 확인
 echo "✅ Checking deployment status..."
