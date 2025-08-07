@@ -8,6 +8,10 @@ echo "🚀 Starting deployment..."
 # 프로젝트 디렉토리로 이동
 cd /home/ubuntu/slack-bot/worunie-2025
 
+# 최신 코드 가져오기
+echo "📥 Pulling latest code from GitHub..."
+git pull origin main
+
 # 환경 변수 확인
 if [ -z "$SLACK_SIGNING_SECRET" ] || [ -z "$SLACK_BOT_TOKEN" ]; then
     echo "❌ Error: Required environment variables are not set"
