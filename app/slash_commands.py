@@ -667,7 +667,7 @@ def handle_user_list(user_service: UserService):
                     slack_users_text += f"총 {len(slack_user_mapping)}명\n\n"
                     
                     for user_id, display_name in slack_user_mapping.items():
-                        slack_users_text += f"• <@{user_id}> ({display_name})\n"
+                        slack_users_text += f"• {user_id} ({display_name})\n"
                     
                     # 기존 DB 사용자 목록과 함께 반환
                     result = user_service.get_all_users()
