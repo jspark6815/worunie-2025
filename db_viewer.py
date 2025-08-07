@@ -153,12 +153,13 @@ async def edit_user_form(request: Request, user_id: str):
     return templates.TemplateResponse("user_form.html", {
         "request": request,
         "user": dict(user),
-        "is_edit": True
+        "action": "edit"
     })
 
 @app.post("/users/edit/{user_id}")
 async def edit_user(user_id: str, 
                    name: str = Form(...),
+                   new_user_id: str = Form(...),  # 새로운 user_id (Slack ID)
                    school_major: str = Form(...),
                    position: str = Form(...),
                    insurance: str = Form(...),
@@ -168,18 +169,87 @@ async def edit_user(user_id: str,
     cursor = conn.cursor()
     
     try:
+        # user_id가 변경된 경우 중복 확인
+        if new_user_id != user_id:
+            cursor.execute("""
+                SELECT name FROM users 
+                WHERE user_id = ? AND is_active = 1
+            """, (new_user_id,))
+            
+            if cursor.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail=f"Slack ID '{new_user_id}'는 이미 다른 사용자가 사용 중입니다.")
+        
+        # Slack ID 형식 검증 (U로 시작하는지 확인)
+        if not new_user_id.startswith('U'):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Slack ID는 'U'로 시작해야 합니다. (예: U099TRRAF4Y)")
+        
         cursor.execute("""
             UPDATE users 
-            SET name = ?, school_major = ?, position = ?, insurance = ?, email = ?
+            SET user_id = ?, name = ?, school_major = ?, position = ?, insurance = ?, email = ?
             WHERE user_id = ? AND is_active = 1
-        """, (name, school_major, position, insurance, email, user_id))
+        """, (new_user_id, name, school_major, position, insurance, email, user_id))
         
         conn.commit()
         conn.close()
         return RedirectResponse(url="/users", status_code=303)
+    except HTTPException:
+        raise
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=f"사용자 수정 중 오류가 발생했습니다: {str(e)}")
+
+@app.post("/users/quick-edit-slack-id/{user_id}")
+async def quick_edit_slack_id(user_id: str, new_user_id: str = Form(...)):
+    """빠른 Slack ID 변경"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Slack ID 형식 검증
+        if not new_user_id.startswith('U'):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Slack ID는 'U'로 시작해야 합니다.")
+        
+        # 중복 확인
+        cursor.execute("""
+            SELECT name FROM users 
+            WHERE user_id = ? AND is_active = 1
+        """, (new_user_id,))
+        
+        if cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Slack ID '{new_user_id}'는 이미 다른 사용자가 사용 중입니다.")
+        
+        # 기존 사용자 정보 가져오기
+        cursor.execute("""
+            SELECT name, school_major, position, insurance, email
+            FROM users 
+            WHERE user_id = ? AND is_active = 1
+        """, (user_id,))
+        
+        user = cursor.fetchone()
+        if not user:
+            conn.close()
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+        
+        # Slack ID 업데이트
+        cursor.execute("""
+            UPDATE users 
+            SET user_id = ?
+            WHERE user_id = ? AND is_active = 1
+        """, (new_user_id, user_id))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/users", status_code=303)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Slack ID 변경 중 오류가 발생했습니다: {str(e)}")
 
 @app.post("/users/delete/{user_id}")
 async def delete_user(user_id: str):
@@ -207,7 +277,7 @@ async def add_user_form(request: Request):
     return templates.TemplateResponse("user_form.html", {
         "request": request,
         "user": None,
-        "is_edit": False
+        "action": "add"
     })
 
 @app.post("/users/add")
@@ -222,6 +292,21 @@ async def add_user(name: str = Form(...),
     cursor = conn.cursor()
     
     try:
+        # Slack ID 형식 검증 (U로 시작하는지 확인)
+        if not user_id.startswith('U'):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Slack ID는 'U'로 시작해야 합니다. (예: U099TRRAF4Y)")
+        
+        # 중복 확인
+        cursor.execute("""
+            SELECT name FROM users 
+            WHERE user_id = ? AND is_active = 1
+        """, (user_id,))
+        
+        if cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Slack ID '{user_id}'는 이미 다른 사용자가 사용 중입니다.")
+        
         cursor.execute("""
             INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at, is_active)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1)
@@ -230,6 +315,8 @@ async def add_user(name: str = Form(...),
         conn.commit()
         conn.close()
         return RedirectResponse(url="/users", status_code=303)
+    except HTTPException:
+        raise
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=f"사용자 등록 중 오류가 발생했습니다: {str(e)}")
