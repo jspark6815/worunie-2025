@@ -60,6 +60,7 @@ async def add_user_form(request: Request):
 @app.post("/users/add", response_class=HTMLResponse)
 async def add_user(request: Request, 
                    name: str = Form(...),
+                   user_id: str = Form(...),
                    school_major: str = Form(...),
                    position: str = Form(...),
                    insurance: str = Form(...),
@@ -69,10 +70,14 @@ async def add_user(request: Request,
     cursor = conn.cursor()
     
     try:
+        # user_id가 비어있거나 'U'로 시작하지 않으면 임시 ID 생성
+        if not user_id or not user_id.startswith('U'):
+            user_id = f"temp_{datetime.now().timestamp()}"
+        
         cursor.execute("""
             INSERT INTO users (user_id, name, school_major, position, insurance, email, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (f"temp_{datetime.now().timestamp()}", name, school_major, position, insurance, email, datetime.now()))
+        """, (user_id, name, school_major, position, insurance, email, datetime.now()))
         
         conn.commit()
         conn.close()
@@ -109,6 +114,7 @@ async def edit_user_form(request: Request, user_id: str):
 @app.post("/users/edit/{user_id}", response_class=HTMLResponse)
 async def edit_user(request: Request, user_id: str,
                    name: str = Form(...),
+                   new_user_id: str = Form(...),
                    school_major: str = Form(...),
                    position: str = Form(...),
                    insurance: str = Form(...),
@@ -118,11 +124,15 @@ async def edit_user(request: Request, user_id: str,
     cursor = conn.cursor()
     
     try:
+        # new_user_id가 비어있거나 'U'로 시작하지 않으면 기존 ID 유지
+        if not new_user_id or not new_user_id.startswith('U'):
+            new_user_id = user_id
+        
         cursor.execute("""
             UPDATE users 
-            SET name = ?, school_major = ?, position = ?, insurance = ?, email = ?
+            SET user_id = ?, name = ?, school_major = ?, position = ?, insurance = ?, email = ?
             WHERE user_id = ? AND is_active = 1
-        """, (name, school_major, position, insurance, email, user_id))
+        """, (new_user_id, name, school_major, position, insurance, email, user_id))
         
         conn.commit()
         conn.close()
@@ -151,6 +161,36 @@ async def delete_user(request: Request, user_id: str):
     except Exception as e:
         conn.rollback()
         conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/users/quick-edit-slack-id/{user_id}", response_class=HTMLResponse)
+async def quick_edit_slack_id(request: Request, user_id: str, new_user_id: str = Form(...)):
+    """빠른 Slack ID 변경"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # new_user_id가 비어있거나 'U'로 시작하지 않으면 오류
+        if not new_user_id or not new_user_id.startswith('U'):
+            raise HTTPException(status_code=400, detail="Slack ID는 'U'로 시작해야 합니다")
+        
+        cursor.execute("""
+            UPDATE users 
+            SET user_id = ?
+            WHERE user_id = ? AND is_active = 1
+        """, (new_user_id, user_id))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url="/users", status_code=302)
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/teams", response_class=HTMLResponse)
