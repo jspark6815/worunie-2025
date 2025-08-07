@@ -21,7 +21,13 @@ jobs:
     - name: Add EC2 to known hosts
       run: |
         mkdir -p ~/.ssh
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
+        if [ -n "${{ secrets.EC2_HOST }}" ]; then
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        else
+          echo "Error: EC2_HOST secret is not set"
+          exit 1
+        fi
         
     - name: Deploy to EC2
       env:
@@ -31,6 +37,19 @@ jobs:
         SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       run: |
         echo "🚀 Starting deployment to EC2..."
+        echo "EC2_HOST: $EC2_HOST"
+        echo "EC2_USER: $EC2_USER"
+        
+        # 환경 변수 확인
+        if [ -z "$EC2_HOST" ]; then
+          echo "Error: EC2_HOST environment variable is not set"
+          exit 1
+        fi
+        
+        if [ -z "$EC2_USER" ]; then
+          echo "Error: EC2_USER environment variable is not set"
+          exit 1
+        fi
         
         # 프로젝트 파일들을 EC2로 전송
         echo "📤 Uploading files to EC2..."
