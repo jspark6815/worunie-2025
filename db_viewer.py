@@ -64,7 +64,7 @@ def get_member_display_name(user_name: str) -> tuple:
 
 def get_db_connection():
     """데이터베이스 연결"""
-    conn = sqlite3.connect('teams.db')
+    conn = sqlite3.connect('/app/data/teams.db')
     conn.row_factory = sqlite3.Row
     return conn
 

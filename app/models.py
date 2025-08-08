@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 # 데이터베이스 설정
-DATABASE_URL = "sqlite:///./teams.db"
+DATABASE_URL = "sqlite:////app/data/teams.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
