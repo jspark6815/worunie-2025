@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import Team, TeamMember, TEAM_COMPOSITION
+from .models import Team, TeamMember, TEAM_COMPOSITION, TEAM_COMPOSITION_5, TEAM_COMPOSITION_4, MAX_TEAMS_5, MAX_TEAMS_4
 import logging
 import requests
 import os
@@ -35,6 +35,14 @@ class TeamBuildingService:
                 
                 logger.info(f"Team '{team_name}' reactivated by {creator_name}")
                 return {"success": True, "message": f"팀 '{team_name}'이 재활성화되었습니다!", "team_id": inactive_team.id}
+            
+            # 팀 제한 확인 (전체 팀 수 제한)
+            active_teams = self.db.query(Team).filter(Team.is_active == True).all()
+            total_teams = len(active_teams)
+            max_total_teams = MAX_TEAMS_5 + MAX_TEAMS_4  # 총 12팀
+            
+            if total_teams >= max_total_teams:
+                return {"success": False, "message": f"팀은 최대 {max_total_teams}팀까지만 생성할 수 있습니다. (현재 {total_teams}팀)"}
             
             # 새 팀 생성
             new_team = Team(
@@ -123,14 +131,27 @@ class TeamBuildingService:
                 existing_team = self.db.query(Team).filter(Team.id == existing_member.team_id).first()
                 return {"success": False, "message": f"<@{user_id}>님은 이미 '{existing_team.name}' 팀에 속해 있습니다."}
             
-            # 해당 포지션에 이미 멤버가 있는지 확인
-            existing_position_member = self.db.query(TeamMember).filter(
-                TeamMember.team_id == team.id,
-                TeamMember.position == position
-            ).first()
+            # 팀 제한 확인 (팀원 추가 시)
+            current_members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+            current_member_count = len(current_members)
             
-            if existing_position_member:
-                return {"success": False, "message": f"'{position}' 포지션은 이미 채워져 있습니다."}
+            # 팀 인원수 제한 확인 (5인팀 또는 4인팀)
+            if current_member_count >= 5:
+                return {"success": False, "message": "팀은 최대 5명까지만 구성할 수 있습니다."}
+            
+            # 4인팀 제한 확인
+            if current_member_count >= 4:
+                active_teams = self.db.query(Team).filter(Team.is_active == True).all()
+                team_count_4 = 0
+                
+                for active_team in active_teams:
+                    if active_team.id != team.id:  # 현재 팀 제외
+                        member_count = self.db.query(TeamMember).filter(TeamMember.team_id == active_team.id).count()
+                        if member_count >= 4:
+                            team_count_4 += 1
+                
+                if team_count_4 >= MAX_TEAMS_4:
+                    return {"success": False, "message": f"4인팀은 최대 {MAX_TEAMS_4}팀까지만 생성할 수 있습니다. (현재 {team_count_4}팀)"}
             
             # 멤버 추가
             new_member = TeamMember(
@@ -234,6 +255,18 @@ class TeamBuildingService:
                 else:
                     position_counts[mapped_position] = 1
             
+            # 팀 유형 결정 (포지션 제한 없이 인원수만으로 판단)
+            total_members = len(members) + 1  # 팀장 포함
+            if total_members >= 5:
+                team_type = "5인팀"
+                required_composition = {"최대 인원": 5}
+            elif total_members >= 4:
+                team_type = "4인팀"
+                required_composition = {"최대 인원": 4}
+            else:
+                team_type = "구성중"
+                required_composition = {"최대 인원": 5}  # 기본값
+            
             # 멤버 목록 (팀장 포함)
             member_list = []
             
@@ -250,6 +283,8 @@ class TeamBuildingService:
                 "team_name": team_name,
                 "members": member_list,
                 "position_counts": position_counts,
+                "team_type": team_type,
+                "required_composition": required_composition,
                 "created_at": team.created_at.strftime("%Y-%m-%d %H:%M"),
                 "creator_name": creator_name,
                 "creator_id": team.creator_id
@@ -265,20 +300,44 @@ class TeamBuildingService:
             teams = self.db.query(Team).filter(Team.is_active == True).all()
             
             team_list = []
+            team_count_5 = 0
+            team_count_4 = 0
+            
             for team in teams:
                 members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
                 member_count = len(members)
-                total_required = sum(TEAM_COMPOSITION.values())
+                
+                # 팀 유형 분류 (포지션 제한 없이 인원수만으로 판단)
+                if member_count >= 5:
+                    team_type = "5인팀"
+                    total_required = 5
+                    team_count_5 += 1
+                elif member_count >= 4:
+                    team_type = "4인팀"
+                    total_required = 4
+                    team_count_4 += 1
+                else:
+                    team_type = "구성중"
+                    total_required = 5  # 기본값
                 
                 team_list.append({
                     "name": team.name,
                     "member_count": member_count,
                     "total_required": total_required,
+                    "team_type": team_type,
                     "is_complete": member_count >= total_required,
                     "created_at": team.created_at.strftime("%Y-%m-%d %H:%M")
                 })
             
-            return {"success": True, "teams": team_list}
+            # 팀 제한 정보 추가
+            limit_info = {
+                "team_count_5": team_count_5,
+                "team_count_4": team_count_4,
+                "max_teams_5": MAX_TEAMS_5,
+                "max_teams_4": MAX_TEAMS_4
+            }
+            
+            return {"success": True, "teams": team_list, "limit_info": limit_info}
             
         except Exception as e:
             logger.error(f"Error getting all teams: {e}")

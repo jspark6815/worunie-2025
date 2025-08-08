@@ -55,13 +55,29 @@ class TeamMember(Base):
 # 포지션 정의
 POSITIONS = ["프론트엔드", "백엔드", "기획", "디자인"]
 
-# 팀 구성 규칙 (기존과 동일하게 유지)
-TEAM_COMPOSITION = {
+# 팀 구성 규칙
+# 5인팀: BE 2명, FE 1명, Designer 1명, Planner 1명 (총 5명)
+# 4인팀: BE 1명, FE 1명, Designer 1명, Planner 1명 (총 4명)
+TEAM_COMPOSITION_5 = {
     "BE": 2,  # BE 개발자 2명
     "FE": 1,  # FE 개발자 1명
     "Designer": 1,  # 디자이너 1명
     "Planner": 1  # 기획자 1명
 }
+
+TEAM_COMPOSITION_4 = {
+    "BE": 1,  # BE 개발자 1명
+    "FE": 1,  # FE 개발자 1명
+    "Designer": 1,  # 디자이너 1명
+    "Planner": 1  # 기획자 1명
+}
+
+# 팀 제한 설정
+MAX_TEAMS_5 = 10  # 5인팀 최대 10팀
+MAX_TEAMS_4 = 2   # 4인팀 최대 2팀
+
+# 기존 호환성을 위한 기본 구성 (5인팀)
+TEAM_COMPOSITION = TEAM_COMPOSITION_5
 
 def get_db():
     db = SessionLocal()

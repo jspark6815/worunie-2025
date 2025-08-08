@@ -7,7 +7,7 @@ import logging
 import urllib.parse
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from sqlalchemy.orm import Session
-from .models import get_db, TEAM_COMPOSITION, POSITIONS, Team, TeamMember
+from .models import get_db, TEAM_COMPOSITION, TEAM_COMPOSITION_5, TEAM_COMPOSITION_4, MAX_TEAMS_5, MAX_TEAMS_4, POSITIONS, Team, TeamMember
 from .team_service import TeamBuildingService
 from .user_service import UserService
 from dotenv import load_dotenv
@@ -283,9 +283,13 @@ async def handle_slash_commands(
 def handle_create_team(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
     """팀 생성 처리"""
     if not text:
+        help_text = "사용법: `/팀생성 팀명`\n예시: `/팀생성 해커톤팀1`\n\n"
+        help_text += "📊 *팀 구성 제한*\n"
+        help_text += f"• 5인팀: 최대 {MAX_TEAMS_5}팀 (최대 5명, 포지션 제한 없음)\n"
+        help_text += f"• 4인팀: 최대 {MAX_TEAMS_4}팀 (최대 4명, 포지션 제한 없음)\n"
         return {
             "response_type": "ephemeral",
-            "text": "사용법: `/팀생성 팀명`\n예시: `/팀생성 해커톤팀1`"
+            "text": help_text
         }
     
     # user_id를 직접 사용하고, user_name을 creator_name으로 사용
@@ -311,7 +315,10 @@ def handle_add_member(text: str, user_id: str, user_name: str, team_service: Tea
     
     if not text:
         help_text = "사용법: `/팀빌딩 @유저명`\n"
-        help_text += "팀장만 사용 가능합니다. 팀원을 추가합니다."
+        help_text += "팀장만 사용 가능합니다. 팀원을 추가합니다.\n\n"
+        help_text += "📊 *팀 구성 제한*\n"
+        help_text += f"• 5인팀: 최대 {MAX_TEAMS_5}팀 (최대 5명, 포지션 제한 없음)\n"
+        help_text += f"• 4인팀: 최대 {MAX_TEAMS_4}팀 (최대 4명, 포지션 제한 없음)\n"
         return {
             "response_type": "ephemeral",
             "text": help_text
@@ -451,7 +458,8 @@ def handle_team_info(text: str, team_service: TeamBuildingService):
     result = team_service.get_team_info(text)
     
     if result["success"]:
-        response_text = f"📋 *{result['team_name']}* 팀 정보\n"
+        team_type = result.get("team_type", "구성중")
+        response_text = f"📋 *{result['team_name']}* 팀 정보 ({team_type})\n"
         response_text += f"생성일: {result['created_at']}\n"
         response_text += f"팀장: <@{result['creator_id']}> ({result['creator_name']})\n\n"
         
@@ -487,9 +495,17 @@ def handle_team_list(team_service: TeamBuildingService):
             }
         
         response_text = "📋 *팀 목록*\n"
+        
+        # 팀 제한 정보 표시
+        limit_info = result.get("limit_info", {})
+        response_text += f"📊 *팀 구성 현황*\n"
+        response_text += f"• 5인팀: {limit_info.get('team_count_5', 0)}/{limit_info.get('max_teams_5', 10)}팀\n"
+        response_text += f"• 4인팀: {limit_info.get('team_count_4', 0)}/{limit_info.get('max_teams_4', 2)}팀\n\n"
+        
         for team in result["teams"]:
             status_emoji = "✅" if team["is_complete"] else "⏳"
-            response_text += f"{status_emoji} *{team['name']}* ({team['member_count']}/{team['total_required']}명)\n"
+            team_type = team.get("team_type", "구성중")
+            response_text += f"{status_emoji} *{team['name']}* ({team['member_count']}/{team['total_required']}명) - {team_type}\n"
             response_text += f"   생성일: {team['created_at']}\n\n"
         
         return {
@@ -595,9 +611,8 @@ def handle_help_command():
     
     help_text += "• `/팀빌딩 @유저명` - 팀원을 추가합니다 (팀장만 가능)\n"
     help_text += "  팀장의 팀에 팀원을 추가합니다. 포지션은 자동으로 결정됩니다.\n"
-    help_text += "  가능한 포지션:\n"
-    for position, count in TEAM_COMPOSITION.items():
-        help_text += f"    - {position}: {count}명\n"
+    help_text += "  가능한 포지션: BE, FE, Designer, Planner\n"
+    help_text += "  *포지션 제한 없음* - 자유롭게 구성 가능\n"
     help_text += "\n"
     
     help_text += "• `/팀정보 팀명` - 팀의 상세 정보를 조회합니다\n"
@@ -623,6 +638,8 @@ def handle_help_command():
     help_text += "📊 *팀 구성*\n"
     help_text += "• 팀장 1명 + 팀원들로 구성\n"
     help_text += "• 가능한 포지션: BE, FE, Designer, Planner\n"
+    help_text += "• 포지션 제한 없음 - 자유롭게 구성 가능\n"
+    help_text += "• 팀 제한: 5인팀 최대 10팀, 4인팀 최대 2팀\n"
     
     help_text += "💡 *사용 팁*\n"
     help_text += "• 팀명은 중복될 수 없습니다\n"
