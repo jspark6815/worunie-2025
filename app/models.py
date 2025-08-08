@@ -49,9 +49,8 @@ class TeamMember(Base):
     # 팀 관계
     team = relationship("Team", back_populates="members")
 
-# 데이터베이스 테이블 강제 재생성 (기존 테이블 삭제 후 재생성)
-Base.metadata.drop_all(bind=engine)  # 기존 테이블 삭제
-Base.metadata.create_all(bind=engine)  # 새로 생성
+# 데이터베이스 테이블 생성 (기존 테이블이 있으면 유지)
+# Base.metadata.create_all(bind=engine)  # 테이블이 없으면 생성
 
 # 포지션 정의
 POSITIONS = ["프론트엔드", "백엔드", "기획", "디자인"]
