@@ -30,6 +30,16 @@ echo "🛑 Stopping existing containers..."
 docker-compose down || true
 docker-compose -f docker-compose.db_viewer.yml down || true
 
+# Docker 볼륨 생성 및 DB 파일 복사
+echo "🗄️ Setting up database volume..."
+docker volume create teams_db_data || true
+
+# 기존 DB 파일이 있다면 볼륨에 복사
+if [ -f "./teams.db" ]; then
+    echo "📋 Copying existing database to volume..."
+    docker run --rm -v teams_db_data:/data -v $(pwd):/backup alpine cp /backup/teams.db /data/teams.db || true
+fi
+
 # Docker 이미지 정리 (선택사항)
 echo "🧹 Cleaning up old images..."
 docker image prune -f || true

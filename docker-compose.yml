@@ -9,5 +9,8 @@ services:
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
     volumes:
-      - ./teams.db:/app/teams.db
-    restart: unless-stopped 
+      - teams_db_data:/app/teams.db
+    restart: unless-stopped
+
+volumes:
+  teams_db_data: 
