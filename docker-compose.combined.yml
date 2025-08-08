@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  slack-bot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+    volumes:
+      - ./teams.db:/app/data/teams.db
+    restart: unless-stopped
+    depends_on:
+      - db-viewer
+
+  db-viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile.db_viewer
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./teams.db:/app/data/teams.db
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  teams-db:
+    driver: local 
