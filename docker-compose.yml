@@ -13,4 +13,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  teams_db_data: 
+  teams_db_data:
+    external: true 
