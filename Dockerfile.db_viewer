@@ -6,11 +6,12 @@ WORKDIR /app
 RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart requests python-dotenv
 
 # 애플리케이션 파일 복사
-COPY db_viewer.py .
+COPY app/ app/
 COPY templates/ templates/
+COPY requirements.txt .
 
 # 포트 노출
 EXPOSE 8081
 
 # 애플리케이션 실행
-CMD ["python", "-m", "uvicorn", "db_viewer:app", "--host", "0.0.0.0", "--port", "8081"] 
+CMD ["python", "-m", "uvicorn", "app.db_viewer:app", "--host", "0.0.0.0", "--port", "8081"] 
