@@ -77,6 +77,20 @@
                     </a>
                 </div>
 
+                <!-- 디버깅 정보 -->
+                <div class="alert alert-warning">
+                    <strong>디버깅 정보:</strong><br>
+                    action: "{{ action }}"<br>
+                    team: {{ team }}<br>
+                    team.members: {{ team.members if team else 'None' }}<br>
+                    action == 'edit': {{ action == 'edit' }}<br>
+                    team is defined: {{ team is defined }}<br>
+                    team is not none: {{ team is not none }}<br>
+                    전체 조건: {{ action == 'edit' and team is defined and team is not none }}<br>
+                    team 길이: {{ team | length if team else 0 }}<br>
+                    team 키들: {{ team.keys() if team else 'None' }}
+                </div>
+
                 <!-- 팀 기본 정보 폼 -->
                 <div class="card form-card mb-4">
                     <div class="card-header bg-primary text-white">
@@ -118,7 +132,7 @@
                     </div>
                 </div>
 
-                {% if action == 'edit' and team %}
+                {% if action == 'edit' and team is defined and team is not none %}
                 <!-- 팀원 관리 섹션 -->
                 {% elif action == 'add' %}
                 <!-- 팀원 추가 안내 섹션 -->
@@ -141,7 +155,7 @@
                 </div>
                 {% endif %}
                 
-                {% if action == 'edit' and team %}
+                {% if action == 'edit' and team is defined and team is not none %}
                 <div class="card form-card mb-4">
                     <div class="card-header bg-success text-white">
                         <h5 class="mb-0">
