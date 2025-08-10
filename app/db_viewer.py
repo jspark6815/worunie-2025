@@ -285,14 +285,29 @@ async def edit_team_form(request: Request, team_id: int):
     """, (team_id,))
     
     team = cursor.fetchone()
-    conn.close()
     
     if not team:
+        conn.close()
         raise HTTPException(status_code=404, detail="팀을 찾을 수 없습니다")
+    
+    # 팀원 정보 가져오기
+    cursor.execute("""
+        SELECT user_name, position, joined_at
+        FROM team_members 
+        WHERE team_id = ? 
+        ORDER BY joined_at
+    """, (team_id,))
+    
+    team_members = cursor.fetchall()
+    conn.close()
+    
+    # team을 dict로 변환하고 members 추가
+    team_dict = dict(team)
+    team_dict['members'] = team_members
     
     return templates.TemplateResponse("team_form.html", {
         "request": request,
-        "team": team,
+        "team": team_dict,
         "action": "edit"
     })
 
@@ -356,6 +371,93 @@ async def restore_team(request: Request, team_id: int):
         conn.commit()
         conn.close()
         return RedirectResponse(url="/teams", status_code=302)
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/teams/{team_id}/add-member", response_class=HTMLResponse)
+async def add_team_member(request: Request, team_id: int):
+    """팀원 추가"""
+    form_data = await request.form()
+    member_slack_id = form_data.get("member_slack_id", "").strip()
+    
+    if not member_slack_id:
+        raise HTTPException(status_code=400, detail="SLACK ID는 필수입니다")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 팀이 존재하고 활성화되어 있는지 확인
+        cursor.execute("SELECT id, name FROM teams WHERE id = ? AND is_active = 1", (team_id,))
+        team = cursor.fetchone()
+        
+        if not team:
+            conn.close()
+            raise HTTPException(status_code=404, detail="팀을 찾을 수 없습니다")
+        
+        # SLACK ID로 사용자 정보 조회
+        cursor.execute("""
+            SELECT user_id, name, position 
+            FROM users 
+            WHERE user_id = ? AND is_active = 1
+        """, (member_slack_id,))
+        user_info = cursor.fetchone()
+        
+        if not user_info:
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"SLACK ID '{member_slack_id}'에 해당하는 사용자를 찾을 수 없습니다")
+        
+        user_id, user_name, position = user_info
+        
+        # 이미 팀원인지 확인
+        cursor.execute("SELECT id FROM team_members WHERE team_id = ? AND user_name = ?", (team_id, user_name))
+        existing_member = cursor.fetchone()
+        
+        if existing_member:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"'{user_name}'은(는) 이미 팀원으로 등록된 사용자입니다")
+        
+        # 팀원 추가
+        cursor.execute("""
+            INSERT INTO team_members (team_id, user_name, position, joined_at)
+            VALUES (?, ?, ?, ?)
+        """, (team_id, user_name, position, datetime.now()))
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/teams/edit/{team_id}", status_code=302)
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/teams/{team_id}/remove-member/{user_name}", response_class=HTMLResponse)
+async def remove_team_member(request: Request, team_id: int, user_name: str):
+    """팀원 제거"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 팀이 존재하고 활성화되어 있는지 확인
+        cursor.execute("SELECT id, name FROM teams WHERE id = ? AND is_active = 1", (team_id,))
+        team = cursor.fetchone()
+        
+        if not team:
+            conn.close()
+            raise HTTPException(status_code=404, detail="팀을 찾을 수 없습니다")
+        
+        # 팀원 제거
+        cursor.execute("DELETE FROM team_members WHERE team_id = ? AND user_name = ?", (team_id, user_name))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="팀원을 찾을 수 없습니다")
+        
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/teams/edit/{team_id}", status_code=302)
     except Exception as e:
         conn.rollback()
         conn.close()

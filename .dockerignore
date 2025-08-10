@@ -1,3 +1,6 @@
+# Database files (should be mounted as volumes)
+*.db
+
 # Git
 .git
 .gitignore

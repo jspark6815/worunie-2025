@@ -94,10 +94,39 @@ class TeamBuildingService:
     def add_member_to_team(self, team_name: str, user_id: str, user_name: str) -> dict:
         """팀에 멤버 추가 (사용자의 DB 포지션 자동 사용)"""
         try:
+            logger.info(f"=== add_member_to_team called ===")
+            logger.info(f"team_name: '{team_name}'")
+            logger.info(f"user_id: '{user_id}'")
+            logger.info(f"user_name: '{user_name}'")
+            
             # 팀 찾기
+            logger.info(f"Searching for team with name: '{team_name}'")
             team = self.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
+            
             if not team:
-                return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
+                logger.error(f"Team '{team_name}' not found or not active")
+                
+                # 비슷한 이름의 팀이 있는지 확인
+                similar_teams = self.db.query(Team).filter(
+                    Team.name.like(f"%{team_name}%"),
+                    Team.is_active == True
+                ).all()
+                
+                if similar_teams:
+                    team_names = [t.name for t in similar_teams]
+                    return {
+                        "success": False, 
+                        "message": f"팀 '{team_name}'을 찾을 수 없습니다.\n\n비슷한 이름의 팀: {', '.join(team_names)}\n\n정확한 팀명을 입력해주세요."
+                    }
+                
+                return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다.\n팀명을 확인하거나 먼저 팀을 생성해주세요."}
+            
+            logger.info(f"Found team: id={team.id}, name='{team.name}', creator_id='{team.creator_id}'")
+            
+            # 팀 객체 유효성 확인
+            if not team or not hasattr(team, 'name') or not team.name:
+                logger.error(f"Invalid team object: {team}")
+                return {"success": False, "message": "팀 정보가 올바르지 않습니다. 다시 시도해주세요."}
             
             # 사용자의 DB 포지션 가져오기 (Slack User ID 기준)
             from .user_service import UserService
@@ -105,12 +134,15 @@ class TeamBuildingService:
             user_result = user_service.get_user_info(user_id)
             
             if not user_result["success"]:
+                logger.warning(f"User {user_id} not found in database")
                 return {"success": False, "message": f"<@{user_id}>님은 데이터베이스에 등록되어 있지 않습니다.\n웹 DB 뷰어에서 사용자를 등록해주세요."}
             
             user_data = user_result["user"]
             db_position = user_data.get("position")
+            logger.info(f"User {user_id} position from DB: '{db_position}'")
             
             if not db_position:
+                logger.warning(f"User {user_id} has no position in database")
                 return {"success": False, "message": f"<@{user_id}>님의 포지션이 데이터베이스에 등록되어 있지 않습니다.\n웹 DB 뷰어에서 포지션을 설정해주세요."}
             
             # DB 포지션을 팀 구성 규칙에 맞게 매핑
@@ -123,20 +155,26 @@ class TeamBuildingService:
             
             position = position_mapping.get(db_position)
             if not position:
+                logger.warning(f"User {user_id} position '{db_position}' not in mapping")
                 return {"success": False, "message": f"<@{user_id}>님의 포지션 '{db_position}'은 팀 구성 규칙에 맞지 않습니다.\n가능한 포지션: 백엔드, 프론트엔드, 디자인, 기획"}
+            
+            logger.info(f"Mapped position: '{db_position}' -> '{position}'")
             
             # 사용자가 이미 팀에 속해있는지 확인 (Slack User ID 기준)
             existing_member = self.db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
             if existing_member:
                 existing_team = self.db.query(Team).filter(Team.id == existing_member.team_id).first()
-                return {"success": False, "message": f"<@{user_id}>님은 이미 '{existing_team.name}' 팀에 속해 있습니다."}
+                logger.warning(f"User {user_id} already in team '{existing_team.name if existing_team else 'Unknown'}'")
+                return {"success": False, "message": f"<@{user_id}>님은 이미 '{existing_team.name if existing_team else 'Unknown'}' 팀에 속해 있습니다."}
             
             # 팀 제한 확인 (팀원 추가 시)
             current_members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
             current_member_count = len(current_members)
+            logger.info(f"Current team member count: {current_member_count}")
             
             # 팀 인원수 제한 확인 (5인팀 또는 4인팀)
             if current_member_count >= 5:
+                logger.warning(f"Team '{team_name}' already has maximum members (5)")
                 return {"success": False, "message": "팀은 최대 5명까지만 구성할 수 있습니다."}
             
             # 4인팀 제한 확인
@@ -151,9 +189,11 @@ class TeamBuildingService:
                             team_count_4 += 1
                 
                 if team_count_4 >= MAX_TEAMS_4:
+                    logger.warning(f"Maximum 4-person teams reached: {team_count_4}")
                     return {"success": False, "message": f"4인팀은 최대 {MAX_TEAMS_4}팀까지만 생성할 수 있습니다. (현재 {team_count_4}팀)"}
             
             # 멤버 추가
+            logger.info(f"Adding member {user_name} to team {team.name} as {position}")
             new_member = TeamMember(
                 team_id=team.id,
                 user_id=user_id,

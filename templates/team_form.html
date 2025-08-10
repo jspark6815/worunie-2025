@@ -39,12 +39,29 @@
             padding: 12px 30px;
             font-weight: 600;
         }
+        .member-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        .position-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+        }
+        .member-form {
+            background: #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="container py-4">
         <div class="row justify-content-center">
-            <div class="col-md-8">
+            <div class="col-lg-10">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <div>
                         <h1 class="text-white">
@@ -60,7 +77,13 @@
                     </a>
                 </div>
 
-                <div class="card form-card">
+                <!-- 팀 기본 정보 폼 -->
+                <div class="card form-card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle"></i> 팀 기본 정보
+                        </h5>
+                    </div>
                     <div class="card-body p-4">
                         <form method="POST" action="{% if action == 'add' %}/teams/add{% else %}/teams/edit/{{ team.id }}{% endif %}">
                             <div class="row">
@@ -93,7 +116,97 @@
                     </div>
                 </div>
 
-                <div class="card form-card mt-4">
+                {% if action == 'edit' and team %}
+                <!-- 팀원 관리 섹션 -->
+                <div class="card form-card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-users"></i> 팀원 관리
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <!-- 팀원 추가 폼 -->
+                        <div class="member-form">
+                                                    <h6 class="mb-3">
+                            <i class="fas fa-plus"></i> 새 팀원 추가 (SLACK ID로)
+                        </h6>
+                        <form method="POST" action="/teams/{{ team.id }}/add-member">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="new_member_slack_id" class="form-label">
+                                            <i class="fab fa-slack"></i> SLACK ID *
+                                        </label>
+                                        <input type="text" class="form-control" id="new_member_slack_id" name="member_slack_id" 
+                                               placeholder="예: U1234567890" required>
+                                        <small class="form-text text-muted">Slack 사용자의 고유 ID를 입력하세요</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="submit" class="btn btn-primary w-100">
+                                            <i class="fas fa-plus"></i> 팀원 추가
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- 기존 팀원 목록 -->
+                        <h6 class="mb-3">
+                            <i class="fas fa-list"></i> 현재 팀원 ({{ team.members | length }}명)
+                        </h6>
+                        {% if team.members %}
+                            {% for member in team.members %}
+                            <div class="member-item">
+                                <div class="row align-items-center">
+                                    <div class="col-md-4">
+                                        <strong>
+                                            <i class="fas fa-user"></i> {{ member.user_name }}
+                                        </strong>
+                                    </div>
+                                    <div class="col-md-3">
+                                        {% if member.position %}
+                                            {% if member.position == "프론트엔드" %}
+                                                <span class="badge bg-primary position-badge">{{ member.position }}</span>
+                                            {% elif member.position == "백엔드" %}
+                                                <span class="badge bg-success position-badge">{{ member.position }}</span>
+                                            {% elif member.position == "기획" %}
+                                                <span class="badge bg-warning position-badge">{{ member.position }}</span>
+                                            {% elif member.position == "디자인" %}
+                                                <span class="badge bg-info position-badge">{{ member.position }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary position-badge">{{ member.position }}</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small class="text-muted">
+                                            <i class="fas fa-calendar"></i> {{ member.joined_at.split(' ')[0] if member.joined_at else '날짜 없음' }}
+                                        </small>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <form method="POST" action="/teams/{{ team.id }}/remove-member/{{ member.user_name }}" 
+                                              style="display: inline;" 
+                                              onsubmit="return confirm('정말 이 팀원을 제거하시겠습니까?')">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-user-minus"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-users fa-3x mb-3"></i>
+                                <p>아직 팀원이 없습니다. 위 폼을 사용하여 팀원을 추가해보세요!</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 안내 정보 -->
+                <div class="card form-card">
                     <div class="card-body">
                         <h5 class="card-title">
                             <i class="fas fa-info-circle"></i> 입력 안내
@@ -101,8 +214,10 @@
                         <ul class="list-unstyled">
                             <li><i class="fas fa-check text-success"></i> 팀명은 필수 입력 항목입니다</li>
                             <li><i class="fas fa-check text-success"></i> 팀장 이름은 필수 입력 항목입니다</li>
-                            <li><i class="fas fa-check text-success"></i> 팀 등록 후 Slack에서 팀원을 추가할 수 있습니다</li>
+                            <li><i class="fas fa-check text-success"></i> 팀 등록 후 팀원을 추가할 수 있습니다</li>
                             <li><i class="fas fa-check text-success"></i> 팀 구성: 백엔드 2명, 프론트엔드 1명, 디자인 1명, 기획 1명</li>
+                            <li><i class="fas fa-check text-success"></i> 팀원 추가 시 SLACK ID만 입력하면 자동으로 이름과 포지션을 가져옵니다</li>
+                            <li><i class="fas fa-check text-success"></i> 팀원 추가/제거는 팀 수정 페이지에서 가능합니다</li>
                         </ul>
                     </div>
                 </div>
