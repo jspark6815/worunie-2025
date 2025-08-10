@@ -21,7 +21,7 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./teams.db:/app/data/teams.db
+      - ./teams.db:/app/teams.db
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
