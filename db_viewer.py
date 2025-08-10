@@ -353,34 +353,62 @@ async def edit_team_form(request: Request, team_id: int):
     """, (team_id,))
     
     team = cursor.fetchone()
-    conn.close()
     
     if not team:
+        conn.close()
         raise HTTPException(status_code=404, detail="팀을 찾을 수 없습니다")
+    
+    # 팀원 정보 가져오기
+    cursor.execute("""
+        SELECT user_name, position, joined_at
+        FROM team_members 
+        WHERE team_id = ? 
+        ORDER BY joined_at
+    """, (team_id,))
+    
+    team_members = cursor.fetchall()
+    conn.close()
+    
+    # team을 dict로 변환하고 members 추가
+    team_dict = dict(team)
+    team_dict['members'] = team_members
     
     return templates.TemplateResponse("team_form.html", {
         "request": request,
-        "team": dict(team),
-        "is_edit": True
+        "team": team_dict,
+        "action": "edit"
     })
 
 @app.post("/teams/edit/{team_id}")
-async def edit_team(team_id: int, name: str = Form(...)):
+async def edit_team(team_id: int, name: str = Form(...), creator_slack_id: str = Form(...)):
     """팀 수정"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
+        # 팀장의 SLACK ID로 사용자 정보 조회
+        cursor.execute("""
+            SELECT name FROM users WHERE user_id = ? AND is_active = 1
+        """, (creator_slack_id,))
+        
+        user_result = cursor.fetchone()
+        if not user_result:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"SLACK ID '{creator_slack_id}'에 해당하는 사용자를 찾을 수 없습니다.")
+        
+        creator_name = user_result[0]
+        
         cursor.execute("""
             UPDATE teams 
-            SET name = ?
+            SET name = ?, creator_id = ?, creator_name = ?
             WHERE id = ? AND is_active = 1
-        """, (name, team_id))
+        """, (name, creator_slack_id, creator_name, team_id))
         
         conn.commit()
         conn.close()
-        return RedirectResponse(url="/teams", status_code=303)
+        return RedirectResponse(url="/teams", status_code=302)
     except Exception as e:
+        conn.rollback()
         conn.close()
         raise HTTPException(status_code=500, detail=f"팀 수정 중 오류가 발생했습니다: {str(e)}")
 
@@ -410,27 +438,41 @@ async def add_team_form(request: Request):
     return templates.TemplateResponse("team_form.html", {
         "request": request,
         "team": None,
-        "is_edit": False
+        "action": "add"
     })
 
 @app.post("/teams/add")
-async def add_team(name: str = Form(...),
-                  creator_id: str = Form(...),
-                  creator_name: str = Form(...)):
+async def add_team(name: str = Form(...), creator_slack_id: str = Form(...)):
     """팀 등록"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
+        # 팀장의 SLACK ID로 사용자 정보 조회
+        cursor.execute("""
+            SELECT name FROM users WHERE user_id = ? AND is_active = 1
+        """, (creator_slack_id,))
+        
+        user_result = cursor.fetchone()
+        if not user_result:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"SLACK ID '{creator_slack_id}'에 해당하는 사용자를 찾을 수 없습니다.")
+        
+        creator_name = user_result[0]
+        
         cursor.execute("""
             INSERT INTO teams (name, creator_id, creator_name, created_at, is_active)
             VALUES (?, ?, ?, ?, 1)
-        """, (name, creator_id, creator_name, datetime.now(), 1))
+        """, (name, creator_slack_id, creator_name, datetime.now(), 1))
+        
+        # 새로 생성된 팀의 ID 가져오기
+        team_id = cursor.lastrowid
         
         conn.commit()
         conn.close()
-        return RedirectResponse(url="/teams", status_code=303)
+        return RedirectResponse(url=f"/teams/edit/{team_id}", status_code=302)
     except Exception as e:
+        conn.rollback()
         conn.close()
         raise HTTPException(status_code=500, detail=f"팀 등록 중 오류가 발생했습니다: {str(e)}")
 
