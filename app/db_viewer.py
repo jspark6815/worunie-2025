@@ -276,9 +276,12 @@ async def add_team(request: Request,
             VALUES (?, ?, ?, ?, 1)
         """, (name, creator_slack_id, creator_name, datetime.now()))
         
+        # 새로 생성된 팀의 ID 가져오기
+        team_id = cursor.lastrowid
+        
         conn.commit()
         conn.close()
-        return RedirectResponse(url="/teams", status_code=302)
+        return RedirectResponse(url=f"/teams/edit/{team_id}", status_code=302)
     except Exception as e:
         conn.rollback()
         conn.close()

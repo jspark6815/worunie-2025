@@ -296,7 +296,7 @@ class TeamBuildingService:
                     position_counts[mapped_position] = 1
             
             # 팀 유형 결정 (포지션 제한 없이 인원수만으로 판단)
-            total_members = len(members) + 1  # 팀장 포함
+            total_members = len(members)  # 팀장 포함
             if total_members >= 5:
                 team_type = "5인팀"
                 required_composition = {"최대 인원": 5}
