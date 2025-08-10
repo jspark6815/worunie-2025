@@ -266,7 +266,7 @@ class TeamBuildingService:
             # 팀장을 팀원에 포함시키기 위해 팀장 정보도 추가
             creator_name = team.creator_name
             
-            # 포지션별 현재 인원수 계산 (팀장 포함)
+            # 포지션별 현재 인원수 계산 (팀원들만)
             position_counts = {}
             for member in members:
                 position = member.position
@@ -275,7 +275,7 @@ class TeamBuildingService:
                 position_counts[position] += 1
             
             # 팀장의 포지션을 확인하고 카운트에 추가
-            # 팀장의 포지션은 DB에서 가져오거나 기본값 사용
+            # 단, 팀장이 이미 team_members 테이블에 등록되어 있다면 중복 계산하지 않음
             from .user_service import UserService
             user_service = UserService(self.db)
             creator_info = user_service.get_user_info(team.creator_id)
@@ -290,13 +290,22 @@ class TeamBuildingService:
                     "기획": "Planner"
                 }
                 mapped_position = position_mapping.get(creator_position, creator_position)
-                if mapped_position in position_counts:
-                    position_counts[mapped_position] += 1
-                else:
-                    position_counts[mapped_position] = 1
+                
+                # 팀장이 이미 team_members 테이블에 등록되어 있는지 확인
+                creator_already_counted = any(member.user_id == team.creator_id for member in members)
+                
+                if not creator_already_counted:
+                    # 팀장이 team_members에 없을 때만 카운트에 추가
+                    if mapped_position in position_counts:
+                        position_counts[mapped_position] += 1
+                    else:
+                        position_counts[mapped_position] = 1
             
             # 팀 유형 결정 (포지션 제한 없이 인원수만으로 판단)
-            total_members = len(members)  # 팀장 포함
+            total_members = len(members)  # 팀원 수
+            if not creator_already_counted:
+                total_members += 1  # 팀장이 별도로 카운트된 경우에만 +1
+            
             if total_members >= 5:
                 team_type = "5인팀"
                 required_composition = {"최대 인원": 5}
