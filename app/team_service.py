@@ -320,7 +320,7 @@ class TeamBuildingService:
             member_list = []
             
             # 팀장을 먼저 추가
-            member_list.append(f"• 팀장: {creator_name} (<@{team.creator_id}>)")
+            member_list.append(f"• 팀장({creator_position}): {creator_name} (<@{team.creator_id}>)")
             
             # 나머지 멤버들 추가
             for member in members:
@@ -354,7 +354,7 @@ class TeamBuildingService:
             
             for team in teams:
                 members = self.db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
-                member_count = len(members)
+                member_count = len(members) + 1
                 
                 # 팀 유형 분류 (포지션 제한 없이 인원수만으로 판단)
                 if member_count >= 5:
