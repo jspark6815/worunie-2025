@@ -253,16 +253,28 @@ async def add_team_form(request: Request):
 @app.post("/teams/add", response_class=HTMLResponse)
 async def add_team(request: Request, 
                    name: str = Form(...),
-                   creator_name: str = Form(...)):
+                   creator_slack_id: str = Form(...)):
     """팀 등록"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
+        # 팀장의 SLACK ID로 사용자 정보 조회
+        cursor.execute("""
+            SELECT name FROM users WHERE user_id = ? AND is_active = 1
+        """, (creator_slack_id,))
+        
+        user_result = cursor.fetchone()
+        if not user_result:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"SLACK ID '{creator_slack_id}'에 해당하는 사용자를 찾을 수 없습니다.")
+        
+        creator_name = user_result[0]
+        
         cursor.execute("""
             INSERT INTO teams (name, creator_id, creator_name, created_at, is_active)
             VALUES (?, ?, ?, ?, 1)
-        """, (name, f"temp_{datetime.now().timestamp()}", creator_name, datetime.now()))
+        """, (name, creator_slack_id, creator_name, datetime.now()))
         
         conn.commit()
         conn.close()
@@ -279,7 +291,7 @@ async def edit_team_form(request: Request, team_id: int):
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, creator_name
+        SELECT id, name, creator_id, creator_name
         FROM teams 
         WHERE id = ? AND is_active = 1
     """, (team_id,))
@@ -314,17 +326,29 @@ async def edit_team_form(request: Request, team_id: int):
 @app.post("/teams/edit/{team_id}", response_class=HTMLResponse)
 async def edit_team(request: Request, team_id: int,
                    name: str = Form(...),
-                   creator_name: str = Form(...)):
+                   creator_slack_id: str = Form(...)):
     """팀 수정"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
+        # 팀장의 SLACK ID로 사용자 정보 조회
+        cursor.execute("""
+            SELECT name FROM users WHERE user_id = ? AND is_active = 1
+        """, (creator_slack_id,))
+        
+        user_result = cursor.fetchone()
+        if not user_result:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"SLACK ID '{creator_slack_id}'에 해당하는 사용자를 찾을 수 없습니다.")
+        
+        creator_name = user_result[0]
+        
         cursor.execute("""
             UPDATE teams 
-            SET name = ?, creator_name = ?
+            SET name = ?, creator_id = ?, creator_name = ?
             WHERE id = ? AND is_active = 1
-        """, (name, creator_name, team_id))
+        """, (name, creator_slack_id, creator_name, team_id))
         
         conn.commit()
         conn.close()

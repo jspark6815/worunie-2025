@@ -95,11 +95,13 @@
                                            value="{% if team %}{{ team.name }}{% endif %}" required>
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="creator_name" class="form-label">
-                                        <i class="fas fa-user-tie"></i> 팀장 이름 *
+                                    <label for="creator_slack_id" class="form-label">
+                                        <i class="fab fa-slack"></i> 팀장 SLACK ID *
                                     </label>
-                                    <input type="text" class="form-control" id="creator_name" name="creator_name" 
-                                           value="{% if team %}{{ team.creator_name }}{% endif %}" required>
+                                    <input type="text" class="form-control" id="creator_slack_id" name="creator_slack_id" 
+                                           placeholder="예: U1234567890" 
+                                           value="{% if team %}{{ team.creator_id }}{% endif %}" required>
+                                    <small class="form-text text-muted">팀장의 Slack 고유 ID를 입력하세요</small>
                                 </div>
                             </div>
 
@@ -213,7 +215,8 @@
                         </h5>
                         <ul class="list-unstyled">
                             <li><i class="fas fa-check text-success"></i> 팀명은 필수 입력 항목입니다</li>
-                            <li><i class="fas fa-check text-success"></i> 팀장 이름은 필수 입력 항목입니다</li>
+                            <li><i class="fas fa-check text-success"></i> 팀장 SLACK ID는 필수 입력 항목입니다</li>
+                            <li><i class="fas fa-check text-success"></i> 팀장 SLACK ID 입력 시 자동으로 이름을 가져옵니다</li>
                             <li><i class="fas fa-check text-success"></i> 팀 등록 후 팀원을 추가할 수 있습니다</li>
                             <li><i class="fas fa-check text-success"></i> 팀 구성: 백엔드 2명, 프론트엔드 1명, 디자인 1명, 기획 1명</li>
                             <li><i class="fas fa-check text-success"></i> 팀원 추가 시 SLACK ID만 입력하면 자동으로 이름과 포지션을 가져옵니다</li>
