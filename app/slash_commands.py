@@ -7,7 +7,7 @@ import logging
 import urllib.parse
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from sqlalchemy.orm import Session
-from .models import get_db, TEAM_COMPOSITION, MAX_TEAMS_5, MAX_TEAMS_4, POSITIONS, Team, TeamMember
+from .models import get_db, MAX_TEAMS_5, MAX_TEAMS_4, POSITIONS, Team, TeamMember
 from .team_service import TeamBuildingService
 from .user_service import UserService
 from dotenv import load_dotenv

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import Team, TeamMember, TEAM_COMPOSITION, MAX_TEAMS_5, MAX_TEAMS_4
+from .models import Team, TeamMember, MAX_TEAMS_5, MAX_TEAMS_4
 import logging
 import requests
 import os
