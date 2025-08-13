@@ -257,6 +257,7 @@ class TeamBuildingService:
     def get_team_info(self, team_name: str) -> dict:
         """팀 정보 조회"""
         try:
+            team_name = team_name.replace('*','')
             team = self.db.query(Team).filter(Team.name == team_name, Team.is_active == True).first()
             if not team:
                 return {"success": False, "message": f"팀 '{team_name}'을 찾을 수 없습니다."}
