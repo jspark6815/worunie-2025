@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .models import get_db, MAX_TEAMS_5, MAX_TEAMS_4, POSITIONS, Team, TeamMember
 from .team_service import TeamBuildingService
 from .user_service import UserService
+from .topic_service import TopicSelectionService
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -298,6 +299,12 @@ async def handle_slash_commands(
     elif command == '/자기소개':
         logger.info("Calling handle_self_introduction")
         return handle_self_introduction(user_id, user_name, user_service)
+    elif command == '/주제선정':
+        logger.info("Calling handle_topic_selection")
+        return handle_topic_selection(text, user_id, user_name, team_service)
+    elif command == '/주제목록':
+        logger.info("Calling handle_topic_list")
+        return handle_topic_list(team_service)
     elif command == '/명령어':
         logger.info("Calling handle_help_command")
         return handle_help_command()
@@ -688,6 +695,13 @@ def handle_help_command():
     help_text += "• `/팀원삭제 팀명 @유저명` - 팀에서 멤버를 삭제합니다 (팀장 또는 관리자만 가능)\n"
     help_text += "  예시: `/팀원삭제 해커톤팀1 @홍길동`\n\n"
     
+    help_text += "📋 *주제선정 명령어*\n"
+    help_text += "• `/주제선정 WORK/RUN` - 팀의 주제를 선택합니다 (팀장만 가능)\n"
+    help_text += "  예시: `/주제선정 WORK` 또는 `/주제선정 run`\n"
+    help_text += "  규칙: 한국 시간 15:30 이후, 각 주제별 최대 6팀, 대소문자 구분 없음\n\n"
+    
+    help_text += "• `/주제목록` - 모든 팀의 주제선정 현황을 조회합니다\n\n"
+    
     help_text += "👤 *사용자 조회 명령어*\n"
     help_text += "• `/사용자정보 @유저명` - 사용자 정보를 조회합니다\n"
     help_text += "  예시: `/사용자정보 @홍길동`\n\n"
@@ -780,29 +794,98 @@ def handle_self_introduction(user_id: str, user_name: str, user_service: UserSer
             "response_type": "ephemeral",
             "text": template
         }
-    else:
-        # DB에 사용자 정보가 없는 경우 기본 템플릿 제공
-        template = f"""📝 *자기소개 템플릿*
 
-*이름*: {user_name}
-*소속*: (학교/전공)
-*포지션*: (백엔드/프론트엔드/디자인/기획)
-*개발 분야*: (백엔드/프론트엔드인 경우: 웹 개발, 모바일 앱 개발 등)
-*4대 보험 가입 여부*: (Y/N)
-*MBTI*: (예: INTJ, ENFP 등)
-*자기소개*: (자유롭게 작성해주세요)
-
-💡 *작성 팁*
-• 간결하고 명확하게 작성해주세요
-• 자신의 강점과 경험을 포함해보세요
-• 팀워크나 협업 경험이 있다면 언급해보세요
-• 해커톤에서 하고 싶은 프로젝트가 있다면 간단히 소개해보세요
-
-⚠️ *참고사항*
-데이터베이스에 등록되지 않은 사용자입니다. 
-웹 DB 뷰어(http://43.200.253.84:8081)에서 사용자 정보를 등록해주세요."""
+def handle_topic_selection(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
+    """주제선정 처리"""
+    if not text:
+        help_text = "사용법: `/주제선정 WORK` 또는 `/주제선정 RUN`\n"
+        help_text += "팀장만 사용 가능합니다.\n\n"
+        help_text += "📋 *주제선정 규칙*\n"
+        help_text += "• 한국 시간 15:30 이후에만 가능\n"
+        help_text += "• 팀장만 선택 가능\n"
+        help_text += "• 각 주제별 최대 6팀까지 가능\n"
+        help_text += "• WORK와 RUN 중 선택\n"
+        help_text += "• 대소문자 구분 없음\n"
+        help_text += "• 변경 가능 (아직 다 차지 않았다면)\n\n"
+        help_text += "예시: `/주제선정 WORK` 또는 `/주제선정 run`"
+        return {
+            "response_type": "ephemeral",
+            "text": help_text
+        }
+    
+    # 팀장의 팀 찾기
+    team = team_service.db.query(Team).filter(Team.creator_id == user_id, Team.is_active == True).first()
+    
+    if not team:
+        return {
+            "response_type": "ephemeral",
+            "text": "❌ 팀장으로 생성한 팀이 없습니다.\n먼저 `/팀생성 팀명`으로 팀을 생성해주세요."
+        }
+    
+    # 주제선정 서비스 생성
+    topic_service = TopicSelectionService(team_service.db)
+    
+    # 주제선정 실행
+    result = topic_service.select_topic(team.name, text, user_id, user_name)
+    
+    if result["success"]:
+        # 현재 주제별 팀 수 조회
+        topic_counts = topic_service.get_topic_counts()
+        if topic_counts["success"]:
+            count_info = f"\n\n📊 *현재 주제별 선택 현황*\n"
+            count_info += f"• WORK: {topic_counts['work_count']}/6팀\n"
+            count_info += f"• RUN: {topic_counts['run_count']}/6팀"
+        else:
+            count_info = ""
         
         return {
             "response_type": "ephemeral",
-            "text": template
+            "text": f"✅ {result['message']}{count_info}"
         }
+    else:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {result['message']}"
+        }
+
+def handle_topic_list(team_service: TeamBuildingService):
+    """주제선정 목록 조회 처리"""
+    topic_service = TopicSelectionService(team_service.db)
+    
+    # 주제별 팀 수 조회
+    topic_counts = topic_service.get_topic_counts()
+    if not topic_counts["success"]:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {topic_counts['message']}"
+        }
+    
+    # 모든 주제선정 정보 조회
+    all_selections = topic_service.get_all_topic_selections()
+    if not all_selections["success"]:
+        return {
+            "response_type": "ephemeral",
+            "text": f"❌ {all_selections['message']}"
+        }
+    
+    response_text = "📋 *주제선정 현황*\n\n"
+    response_text += f"📊 *주제별 선택 현황*\n"
+    response_text += f"• WORK: {topic_counts['work_count']}/6팀"
+    if not topic_counts['work_available']:
+        response_text += " (마감)"
+    response_text += f"\n• RUN: {topic_counts['run_count']}/6팀"
+    if not topic_counts['run_available']:
+        response_text += " (마감)"
+    response_text += "\n\n"
+    
+    if all_selections["selections"]:
+        response_text += "🏆 *선택된 팀 목록*\n"
+        for selection in all_selections["selections"]:
+            response_text += f"• *{selection['team_name']}* - {selection['topic']} (팀장: {selection['creator_name']})\n"
+    else:
+        response_text += "🏆 *선택된 팀 목록*\n아직 주제를 선택한 팀이 없습니다."
+    
+    return {
+        "response_type": "ephemeral",
+        "text": response_text
+    }

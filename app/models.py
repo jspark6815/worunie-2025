@@ -49,16 +49,34 @@ class TeamMember(Base):
     # 팀 관계
     team = relationship("Team", back_populates="members")
 
+class TopicSelection(Base):
+    __tablename__ = "topic_selections"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"))
+    team_name = Column(String, index=True)  # 팀명
+    topic = Column(String, nullable=False)  # WORK 또는 RUN
+    creator_id = Column(String, index=True)  # 팀장의 Slack user ID
+    creator_name = Column(String)  # 팀장의 이름
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
 # 데이터베이스 테이블 생성 (기존 테이블이 있으면 유지)
-# Base.metadata.create_all(bind=engine)  # 테이블이 없으면 생성
+Base.metadata.create_all(bind=engine)  # 테이블이 없으면 생성
 
 # 포지션 정의
 POSITIONS = ["프론트엔드", "백엔드", "기획", "디자인"]
 
+# 주제 정의
+TOPICS = ["WORK", "RUN"]
 
 # 팀 제한 설정
 MAX_TEAMS_5 = 9  # 5인팀 최대 9팀
 MAX_TEAMS_4 = 3   # 4인팀 최대 3팀
+
+# 주제별 최대 팀 수
+MAX_TEAMS_PER_TOPIC = 6
 
 def get_db():
     db = SessionLocal()
