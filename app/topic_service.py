@@ -14,6 +14,29 @@ class TopicSelectionService:
         start_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
         return now >= start_time
     
+    def get_time_until_selection(self) -> dict:
+        """주제선정 시작까지 남은 시간 계산"""
+        korea_tz = pytz.timezone('Asia/Seoul')
+        now = datetime.now(korea_tz)
+        start_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        # 오늘 15:30이 이미 지났으면 내일 15:30까지 계산
+        if now >= start_time:
+            start_time = start_time.replace(day=start_time.day + 1)
+        
+        time_diff = start_time - now
+        
+        hours = time_diff.seconds // 3600
+        minutes = (time_diff.seconds % 3600) // 60
+        seconds = time_diff.seconds % 60
+        
+        return {
+            "hours": hours,
+            "minutes": minutes,
+            "seconds": seconds,
+            "total_seconds": time_diff.total_seconds()
+        }
+    
     def get_topic_selection(self, team_name: str) -> dict:
         """팀의 주제선정 정보 조회"""
         try:
@@ -72,9 +95,10 @@ class TopicSelectionService:
         try:
             # 시간 확인
             if not self.is_selection_time():
+                time_info = self.get_time_until_selection()
                 return {
                     "success": False,
-                    "message": "주제선정은 한국 시간 15:30 이후에만 가능합니다."
+                    "message": f"주제선정은 한국 시간 15:30 이후에만 가능합니다.\n⏰ 남은 시간: {time_info['hours']}시간 {time_info['minutes']}분 {time_info['seconds']}초"
                 }
             
             # 주제 유효성 확인

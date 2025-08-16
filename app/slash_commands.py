@@ -798,8 +798,22 @@ def handle_self_introduction(user_id: str, user_name: str, user_service: UserSer
 def handle_topic_selection(text: str, user_id: str, user_name: str, team_service: TeamBuildingService):
     """주제선정 처리"""
     if not text:
+        # 주제선정 서비스 생성
+        topic_service = TopicSelectionService(team_service.db)
+        
+        # 현재 시간과 남은 시간 계산
+        is_time = topic_service.is_selection_time()
+        time_info = topic_service.get_time_until_selection()
+        
         help_text = "사용법: `/주제선정 WORK` 또는 `/주제선정 RUN`\n"
         help_text += "팀장만 사용 가능합니다.\n\n"
+        
+        if is_time:
+            help_text += "🟢 *주제선정 가능 시간입니다!*\n\n"
+        else:
+            help_text += f"⏰ *주제선정 시작까지 남은 시간*\n"
+            help_text += f"• {time_info['hours']}시간 {time_info['minutes']}분 {time_info['seconds']}초\n\n"
+        
         help_text += "📋 *주제선정 규칙*\n"
         help_text += "• 한국 시간 15:30 이후에만 가능\n"
         help_text += "• 팀장만 선택 가능\n"
